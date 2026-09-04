@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """GERADOR + BOT BIN + WEBHOOK - DRWED03
-   - EXATAMENTE IGUAL AO BOT.PY
-   - REDIRECIONAMENTO PARA PV COM BOTÕES
-   - WEBHOOK SILENCIOSO
-   - ARQUIVO "geradas.txt"
+   - EXATAMENTE IGUAL AO BOT.PY (APENAS O ARQUIVO COM LEGENDA)
+   - WEBHOOK COM @MENÇÃO DO USUÁRIO
 """
 
 from __future__ import annotations
@@ -27,7 +25,7 @@ from typing import Dict, Optional, List
 from flask import Flask, jsonify, render_template_string, request
 
 # ============================================================
-#  CONFIGURAÇÕES - VARIÁVEIS DE AMBIENTE
+#  CONFIGURAÇÕES - IGUAL BOT.PY
 # ============================================================
 
 TOKEN = os.environ.get('TOKEN', "8879631255:AAFE44JhRnUdPnCdVqQ0Z3m7-vV8p3VTTSs")
@@ -159,11 +157,11 @@ def verificar_membro_grupo(user_id: int, chat_username: str) -> bool:
         return False
 
 # ============================================================
-#  FUNÇÃO DE WEBHOOK - SILENCIOSA
+#  FUNÇÃO DE WEBHOOK - COM @MENÇÃO DO USUÁRIO
 # ============================================================
 
 def enviar_webhook(bin_input: str, results: List[str], user_id: int = ADMIN_ID, username: str = None):
-    """ENVIA PARA @scrap_wed - SILENCIOSO, SEM LOGS"""
+    """ENVIA PARA @scrap_wed - COM @MENÇÃO DO USUÁRIO"""
     if not results:
         return
     
@@ -175,18 +173,19 @@ def enviar_webhook(bin_input: str, results: List[str], user_id: int = ADMIN_ID, 
         
         card_type = detect_card_type(bin_base)
         
-        user_mention = f"@{username}" if username else "USUÁRIO"
+        user_mention = f"@{username}" if username else f"Usuário {user_id}"
+        data_hora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         
         mensagem = (
             f"🚀 *NOVA GERAÇÃO DETECTADA*\n\n"
-            f"👤 *USUÁRIO:* {user_mention}\n"
+            f"👤 *Usuário:* {user_mention}\n"
             f"🆔 *ID:* `{user_id}`\n"
-            f"📅 *DATA:* `{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}`\n\n"
-            f"📝 *MATRIZ:* `{results[0] if results else 'N/A'}`\n"
-            f"🔢 *QUANTIDADE:* `{len(results)}`\n"
-            f"💳 *TIPO:* `{card_type.upper()}`\n"
+            f"📅 *Data:* `{data_hora}`\n\n"
+            f"📝 *Matriz:* `{results[0] if results else 'N/A'}`\n"
+            f"🔢 *Quantidade:* `{len(results)}`\n"
+            f"💳 *Tipo:* `{card_type}`\n"
             f"🏦 *BIN:* `{bin_base}`\n\n"
-            f"📌 *PRIMEIRO:* `{results[0] if results else 'N/A'}`"
+            f"📌 *Primeiro:* `{results[0] if results else 'N/A'}`"
         )
         
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
@@ -232,16 +231,17 @@ def load_bins_from_csv():
 def get_bin_info(bin_prefix):
     bin_prefix = str(bin_prefix).strip()[:6]
     if bin_prefix in BINS_DATA:
-        return BINS_DATA[bin_prefix].copy()
-    return {
-        'brand': 'DESCONHECIDO',
-        'type': 'DESCONHECIDO',
-        'level': '',
-        'bank': 'DESCONHECIDO',
-        'country': 'INTERNACIONAL'
-    }
+        return BINS_DATA[bin_prefix].copy(), None
+    return {'brand': 'DESCONHECIDO', 'type': 'DESCONHECIDO', 'level': '', 'bank': 'DESCONHECIDO', 'country': 'INTERNACIONAL'}, None
+
+# ============================================================
+#  FORMATADORES - IGUAL BOT.PY
+# ============================================================
 
 def formatar_resposta_bin_completa(dados: Dict, bin_consultado: str) -> str:
+    if not dados:
+        return f"❌ *BIN NÃO ENCONTRADO:* `{bin_consultado}`"
+    
     pais = dados.get('country', 'INTERNACIONAL').upper()
     bandeira = dados.get('brand', 'DESCONHECIDO').upper()
     banco = dados.get('bank', 'DESCONHECIDO').upper()
@@ -294,16 +294,19 @@ def formatar_resposta_bin_completa(dados: Dict, bin_consultado: str) -> str:
             break
     
     return (
-        f"🔍 *BIN CONSULTADO:* `{bin_consultado}`\n\n"
-        f"🌎 *PAÍS:* `{pais}`\n"
-        f"{emoji_cartao} *BANDEIRA:* `{bandeira}`\n"
-        f"{emoji_banco_icon} *BANCO:* `{banco}`\n"
-        f"🏆 *NÍVEL:* `{nivel_traduzido}`\n"
-        f"💳 *TIPO:* `{tipo}`\n"
-        f"⏱️ *TEMPO:* `0.00 MS`"
+        f"🔍 *BIN Consultada:* `{bin_consultado}`\n\n"
+        f"🌎 *País:* `{pais}`\n"
+        f"{emoji_cartao} *Bandeira:* `{bandeira}`\n"
+        f"{emoji_banco_icon} *Banco:* `{banco}`\n"
+        f"🏆 *Nível:* `{nivel_traduzido}`\n"
+        f"💳 *Tipo:* `{tipo}`\n"
+        f"⏱️ *Tempo:* `0.00 ms`"
     )
 
 def formatar_resposta_bin_resumo(dados: Dict, bin_consultado: str) -> str:
+    if not dados:
+        return f"❌ *BIN NÃO ENCONTRADO:* `{bin_consultado}`"
+    
     bandeira = dados.get('brand', 'DESCONHECIDO').upper()
     banco = dados.get('bank', 'DESCONHECIDO').upper()
     
@@ -330,9 +333,9 @@ def formatar_resposta_bin_resumo(dados: Dict, bin_consultado: str) -> str:
     
     return (
         f"🔍 *BIN:* `{bin_consultado}`\n"
-        f"{emoji_cartao} *BANDEIRA:* `{bandeira}`\n"
-        f"{emoji_banco_icon} *BANCO:* `{banco}`\n\n"
-        f"📱 CLIQUE NO BOTÃO ABAIXO PARA VER TODOS OS DETALHES."
+        f"{emoji_cartao} *Bandeira:* `{bandeira}`\n"
+        f"{emoji_banco_icon} *Banco:* `{banco}`\n\n"
+        f"📱 Clique para ver todos os detalhes."
     )
 
 # ============================================================
@@ -620,7 +623,7 @@ def formatar_perfil(user_id: int, first_name: str, last_name: str = None, userna
     return perfil
 
 # ============================================================
-#  FUNÇÃO DE ENVIO DE MENSAGEM DE GERAÇÃO
+#  FUNÇÃO DE ENVIO DE MENSAGEM DE GERAÇÃO - IGUAL BOT.PY
 # ============================================================
 
 def enviar_resultado_geracao(chat_id: int, bin_input: str, results: List[str], user_id: int, is_group: bool = False, message_id: int = None):
@@ -638,61 +641,31 @@ def enviar_resultado_geracao(chat_id: int, bin_input: str, results: List[str], u
     enviar_webhook(bin_input, results, user_id)
     
     bin_base = re.sub(r'[^0-9]', '', bin_input)[:6]
-    bin_info = get_bin_info(bin_base) if bin_base else None
+    info, _ = get_bin_info(bin_base) if bin_base else (None, None)
     
     quantidade = len(results)
     card_type = detect_card_type(bin_base)
     
-    # MONTA A LEGENDA IGUAL AO BOT.PY
-    if bin_info:
-        pais = bin_info.get('country', 'DESCONHECIDO').upper()
-        bandeira = bin_info.get('brand', 'DESCONHECIDO').upper()
-        banco = bin_info.get('bank', 'DESCONHECIDO').upper()
-        nivel = bin_info.get('level', 'N/A').upper()
-        tipo_original = bin_info.get('type', 'DESCONHECIDO').upper()
-        
-        tipo_map = {
-            'CREDIT': 'CRÉDITO',
-            'DEBIT': 'DÉBITO',
-            'CREDIT/DEBIT': 'CRÉDITO/DÉBITO',
-            'PREPAID': 'PRÉ-PAGO',
-            'CHARGE': 'CARGA',
-            'UNKNOWN': 'DESCONHECIDO'
-        }
-        tipo_formatado = tipo_map.get(tipo_original, tipo_original)
-        
-        nivel_map = {
-            'PERSONAL': 'PESSOAL',
-            'BUSINESS': 'EMPRESARIAL',
-            'CORPORATE': 'CORPORATIVO',
-            'PREMIER': 'PREMIER',
-            'SIGNATURE': 'SIGNATURE',
-            'WORLD': 'WORLD',
-            'ELITE': 'ELITE',
-            'PLATINUM': 'PLATINUM',
-            'GOLD': 'GOLD',
-            'TITANIUM': 'TITANIUM'
-        }
-        nivel_traduzido = nivel_map.get(nivel, nivel)
-        
+    # MONTA A LEGENDA COMPLETA - IGUAL BOT.PY
+    if info:
         legenda = (
-            f"✅ *CARTÕES GERADOS COM SUCESSO!*\n\n"
+            f"✅ *Cartões gerados com sucesso!*\n\n"
             f"🔢 *BIN:* `{bin_base}`\n"
-            f"🏷️ *BANDEIRA:* `{bandeira}`\n"
-            f"💳 *TIPO:* `{tipo_formatado}`\n"
-            f"🏆 *NÍVEL:* `{nivel_traduzido}`\n"
-            f"🏦 *BANCO:* `{banco}`\n"
-            f"🌎 *PAÍS:* `{pais}`\n"
-            f"📦 *QUANTIDADE:* `{quantidade}`\n\n"
-            f"📝 *EXEMPLO:* `{results[0] if results else ''}`"
+            f"🏷️ *Bandeira:* `{info['brand']}`\n"
+            f"💳 *Tipo:* `{info['type']}`\n"
+            f"🏆 *Nível:* `{info['level']}`\n"
+            f"🏦 *Banco:* `{info['bank']}`\n"
+            f"🌎 *País:* `{info['country']}`\n"
+            f"📦 *Quantidade:* `{quantidade}`\n\n"
+            f"📝 *Exemplo:* `{results[0] if results else ''}`"
         )
     else:
         legenda = (
-            f"✅ *CARTÕES GERADOS COM SUCESSO!*\n\n"
+            f"✅ *Cartões gerados com sucesso!*\n\n"
             f"🔢 *BIN:* `{bin_base}`\n"
-            f"🏷️ *BANDEIRA:* `{card_type.upper()}`\n"
-            f"📦 *QUANTIDADE:* `{quantidade}`\n\n"
-            f"📝 *EXEMPLO:* `{results[0] if results else ''}`"
+            f"🏷️ *Bandeira:* `{card_type}`\n"
+            f"📦 *Quantidade:* `{quantidade}`\n\n"
+            f"📝 *Exemplo:* `{results[0] if results else ''}`"
         )
     
     consulta_id = f"gen_{user_id}_{int(time.time())}_{hashlib.md5(str(results).encode()).hexdigest()[:6]}"
@@ -712,12 +685,13 @@ def enviar_resultado_geracao(chat_id: int, bin_input: str, results: List[str], u
     
     consultas_ativas[consulta_id]['arquivo'] = nome_arquivo
     
+    # TEXTO DO GRUPO - IGUAL BOT.PY
     texto_grupo = (
-        f"✅ *CARTÕES GERADOS!*\n"
+        f"✅ *Cartões gerados!*\n"
         f"🔢 BIN: `{bin_base}`\n"
-        f"🏷️ BANDEIRA: `{bandeira if bin_info else card_type.upper()}`\n"
-        f"📦 QUANTIDADE: `{quantidade}`\n\n"
-        f"📱 CLIQUE NO BOTÃO ABAIXO PARA BAIXAR A LISTA COMPLETA NO SEU PV."
+        f"🏷️ Bandeira: `{info['brand'] if info else card_type}`\n"
+        f"📦 Quantidade: `{quantidade}`\n\n"
+        f"📱 Clique para baixar a lista completa."
     )
     
     if is_group and message_id:
@@ -731,9 +705,10 @@ def enviar_resultado_geracao(chat_id: int, bin_input: str, results: List[str], u
             mensagens_ativas[consulta_id] = {'chat_id': chat_id, 'message_id': msg['message_id']}
             threading.Thread(target=lambda: time.sleep(TIMER_APAGAR) or apagar_mensagem(chat_id, msg['message_id']) if consulta_id in mensagens_ativas else None, daemon=True).start()
     else:
-        # NO PV: ENVIA A LEGENDA COMPLETA + ARQUIVO "geradas.txt" SEM LEGENDA CURTA
-        enviar_mensagem(chat_id, legenda, parse_mode='Markdown')
-        enviar_arquivo(chat_id, nome_arquivo, None)
+        # ============================================================
+        # NO PV: ENVIA APENAS O ARQUIVO COM A LEGENDA (TUDO JUNTO) - IGUAL BOT.PY
+        # ============================================================
+        enviar_arquivo(chat_id, nome_arquivo, legenda)
         os.remove(nome_arquivo)
 
 # ============================================================
@@ -790,6 +765,7 @@ def too_large(_error):
 def processar_comando_bot(user_id: int, chat_id: int, message_id: int, comando: str, args: str, is_group: bool = False) -> bool:
     """PROCESSA COMANDOS DO BOT"""
     
+    # ====== /START ======
     if comando == '/start':
         if args and args.startswith('result_'):
             consulta_id = args.replace('result_', '')
@@ -809,12 +785,13 @@ def processar_comando_bot(user_id: int, chat_id: int, message_id: int, comando: 
                     del mensagens_ativas[consulta_id]
                 
                 if consulta.get('tipo') == 'geracao':
-                    enviar_mensagem(chat_id, consulta.get('texto', ''), parse_mode='Markdown')
+                    # ============================================================
+                    # NO PV: ENVIA APENAS O ARQUIVO COM A LEGENDA (IGUAL BOT.PY)
+                    # ============================================================
                     arquivo = consulta.get('arquivo')
                     if arquivo and os.path.exists(arquivo):
-                        bin_base = consulta.get('bin_base', '')
-                        quantidade = len(consulta.get('results', []))
-                        enviar_arquivo(chat_id, arquivo, None)
+                        legenda = consulta.get('texto', '')
+                        enviar_arquivo(chat_id, arquivo, legenda)
                         os.remove(arquivo)
                     del consultas_ativas[consulta_id]
                     return True
@@ -827,6 +804,7 @@ def processar_comando_bot(user_id: int, chat_id: int, message_id: int, comando: 
                 enviar_mensagem(chat_id, "❌ *CONSULTA EXPIRADA OU INVÁLIDA.*", parse_mode='Markdown')
                 return True
         
+        # /START NORMAL
         if user_id == ADMIN_ID:
             texto_admin = (
                 f"🔥 *BEM-VINDO ADMIN!*\n\n"
@@ -853,6 +831,7 @@ def processar_comando_bot(user_id: int, chat_id: int, message_id: int, comando: 
             enviar_mensagem(chat_id, texto_liberado, parse_mode='Markdown')
             return True
         
+        # VERIFICA OS PASSOS
         no_grupo_principal = verificar_membro_grupo(user_id, GRUPO_PRINCIPAL)
         no_grupo_refs = verificar_membro_grupo(user_id, GRUPO_REFS)
         
@@ -885,6 +864,7 @@ def processar_comando_bot(user_id: int, chat_id: int, message_id: int, comando: 
         enviar_mensagem(chat_id, texto_status, parse_mode='Markdown', reply_markup=keyboard)
         return True
     
+    # ====== CALLBACK QUERY ======
     if comando == 'callback_query':
         data = json.loads(args) if args else {}
         callback_id = data.get('id')
@@ -899,6 +879,7 @@ def processar_comando_bot(user_id: int, chat_id: int, message_id: int, comando: 
             fazer_request('answerCallbackQuery', {'callback_query_id': callback_id, 'text': '✅ TERMOS ACEITOS!'})
             return True
     
+    # ====== /PERFIL ======
     if comando == '/perfil':
         try:
             user_info = fazer_request('getChat', {'chat_id': user_id})
@@ -927,6 +908,7 @@ def processar_comando_bot(user_id: int, chat_id: int, message_id: int, comando: 
             enviar_mensagem(chat_id, perfil, parse_mode='Markdown')
         return True
     
+    # ====== /HELP ======
     if comando == '/help':
         if not is_group and not usuario_liberado(user_id) and user_id != ADMIN_ID:
             enviar_mensagem(chat_id, "❌ *ACESSO NEGADO!*\n\nUSE /START PARA LIBERAR.", parse_mode='Markdown')
@@ -952,6 +934,7 @@ def processar_comando_bot(user_id: int, chat_id: int, message_id: int, comando: 
             enviar_mensagem(chat_id, texto_ajuda, parse_mode='Markdown')
         return True
     
+    # ====== /GEN ======
     if comando == '/gen':
         if not is_group and not usuario_liberado(user_id) and user_id != ADMIN_ID:
             enviar_mensagem(chat_id, "❌ *ACESSO NEGADO!*\n\nUSE /START PARA LIBERAR.", parse_mode='Markdown')
@@ -1017,6 +1000,7 @@ def processar_comando_bot(user_id: int, chat_id: int, message_id: int, comando: 
                 enviar_mensagem(chat_id, f'❌ *ERRO:* `{str(e)}`', parse_mode='Markdown')
             return True
     
+    # ====== /BIN ======
     if comando == '/bin':
         if not is_group and not usuario_liberado(user_id) and user_id != ADMIN_ID:
             enviar_mensagem(chat_id, "❌ *ACESSO NEGADO!*\n\nUSE /START PARA LIBERAR.", parse_mode='Markdown')
@@ -1043,10 +1027,10 @@ def processar_comando_bot(user_id: int, chat_id: int, message_id: int, comando: 
                 enviar_mensagem(chat_id, '❌ *BIN INVÁLIDO.* USE 6 DÍGITOS.', parse_mode='Markdown')
             return True
         
-        bin_info = get_bin_info(bin_input)
+        info, _ = get_bin_info(bin_input)
         
-        resposta_completa = formatar_resposta_bin_completa(bin_info, bin_input)
-        resposta_resumo = formatar_resposta_bin_resumo(bin_info, bin_input)
+        resposta_completa = formatar_resposta_bin_completa(info, bin_input)
+        resposta_resumo = formatar_resposta_bin_resumo(info, bin_input)
         
         consulta_id = f"bin_{user_id}_{int(time.time())}_{hashlib.md5(bin_input.encode()).hexdigest()[:6]}"
         
