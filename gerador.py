@@ -6,7 +6,7 @@
    - ACEITA QUALQUER PADRÃO (/gen 512267 40)
    - MATRIZ EXATA
    - UMA MENSAGEM COM ARQUIVO ANEXADO NO PV
-   - ABA VERIFICADOR DE BINS (igual motor.py)
+   - ABA VERIFICADOR DE BINS (VERIFICAR + BUSCA AVANÇADA)
 """
 
 from __future__ import annotations
@@ -178,7 +178,6 @@ def enviar_webhook(bin_input: str, results: List[str], user_id: int = ADMIN_ID, 
         card_type = detect_card_type(bin_base)
         data_hora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         
-        # PEGA O NOME DO USUÁRIO PARA @MENÇÃO
         user_mention = f"@{username}" if username else "Usuário"
         
         if origem == 'site':
@@ -732,7 +731,7 @@ def enviar_resultado_pv(user_id, comando, dados, qtd=None, chat_id_grupo=None, m
         return False
 
 # ============================================================
-#  ROTAS FLASK
+#  ROTAS FLASK - VERIFICADOR DE BINS
 # ============================================================
 
 @app.get('/')
@@ -769,16 +768,71 @@ def api_luhn_validate():
     results = [validate_number(line) for line in lines[:1000]]
     return jsonify({'ok': True, 'results': results, 'count': len(results)})
 
-@app.post('/api/check_bin')
-def api_check_bin():
-    """Rota para verificar BIN - igual ao motor.py"""
-    data = request.get_json(silent=True) or {}
-    bin_num = data.get('bin', '')
+@app.route('/api/check_bin', methods=['POST'])
+def check_bin():
+    bin_num = request.json.get('bin', '')
     bin_clean = re.sub(r'[^0-9]', '', bin_num)
     info, _ = get_bin_info(bin_clean[:6])
     if info:
         return jsonify({'success': True, 'data': info})
     return jsonify({'success': False, 'message': 'BIN nao encontrada'})
+
+@app.route('/api/search_bins', methods=['POST'])
+def search_bins():
+    filters = request.json
+    brand = filters.get('brand', '').strip().upper()
+    country = filters.get('country', '').strip().upper()
+    bank = filters.get('bank', '').strip().upper()
+    tipo = filters.get('type', '').strip().upper()
+    level = filters.get('level', '').strip().upper()
+    bin_search = filters.get('bin', '').strip()
+    
+    results = []
+    for bin_code, info in BINS_DATA.items():
+        match = True
+        if brand and info.get('brand', '').upper() != brand:
+            match = False
+        if country and info.get('country', '').upper() != country:
+            match = False
+        if bank and bank not in info.get('bank', '').upper():
+            match = False
+        if tipo and info.get('type', '').upper() != tipo:
+            match = False
+        if level and info.get('level', '').upper() != level:
+            match = False
+        if bin_search and bin_search not in bin_code:
+            match = False
+        if match:
+            results.append({
+                'bin': bin_code,
+                'brand': info.get('brand', ''),
+                'type': info.get('type', ''),
+                'level': info.get('level', ''),
+                'bank': info.get('bank', ''),
+                'country': info.get('country', '')
+            })
+    
+    return jsonify({'success': True, 'results': results[:500]})
+
+@app.route('/api/countries')
+def countries():
+    countries = sorted(set(info.get('country', '') for info in BINS_DATA.values() if info.get('country')))
+    return jsonify({'success': True, 'countries': countries})
+
+@app.route('/api/brands')
+def brands():
+    brands = sorted(set(info.get('brand', '') for info in BINS_DATA.values() if info.get('brand')))
+    return jsonify({'success': True, 'brands': brands})
+
+@app.route('/api/types')
+def types():
+    types = sorted(set(info.get('type', '') for info in BINS_DATA.values() if info.get('type')))
+    return jsonify({'success': True, 'types': types})
+
+@app.route('/api/levels')
+def levels():
+    levels = sorted(set(info.get('level', '') for info in BINS_DATA.values() if info.get('level')))
+    return jsonify({'success': True, 'levels': levels})
 
 @app.get('/health')
 def health():
@@ -791,16 +845,6 @@ def too_large(_error):
 # ============================================================
 #  PROCESSADOR DE COMANDOS DO BOT
 # ============================================================
-
-def get_user_username(user_id: int) -> Optional[str]:
-    """Tenta obter o username do usuário pelo ID"""
-    try:
-        user_info = fazer_request('getChat', {'chat_id': user_id})
-        if user_info and user_info.get('ok'):
-            return user_info['result'].get('username', None)
-    except:
-        pass
-    return None
 
 def processar_comando_bot(user_id: int, chat_id: int, message_id: int, comando: str, args: str, is_group: bool = False, user_info: Dict = None) -> bool:
     """PROCESSA COMANDOS DO BOT"""
@@ -1188,7 +1232,6 @@ def polling():
     logger.info("🔄 INICIANDO POLLING DO BOT...")
     ultimo_update_id = 0
     erros = 0
-    COMANDOS_PERMITIDOS = ['/start', '/help', '/gen', '/bin', '/perfil', 'callback_query']
     
     while RUNNING and not STOP_EVENT.is_set():
         try:
@@ -1257,7 +1300,7 @@ def polling():
                 break
 
 # ============================================================
-#  TEMPLATE HTML - COM ABA VERIFICADOR DE BINS
+#  TEMPLATE HTML COMPLETO
 # ============================================================
 
 HTML_TEMPLATE = """
@@ -1285,7 +1328,7 @@ HTML_TEMPLATE = """
             --glass-border: rgba(150, 70, 255, 0.12);
             --success-green: #00ff88;
             --danger-red: #ff3355;
-            --bin-bg: rgba(0, 255, 240, 0.05);
+            --card-bg: rgba(13, 14, 28, 0.95);
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1304,7 +1347,6 @@ HTML_TEMPLATE = """
             position: relative;
             z-index: 0;
             width: 100%;
-            -webkit-text-size-adjust: 100%;
         }
 
         body::before {
@@ -1318,8 +1360,6 @@ HTML_TEMPLATE = """
         }
 
         .app-container { max-width: 1200px; width: 100%; padding: 1rem 1rem 2rem; position: relative; z-index: 2; }
-        .app-container.active { display: block; }
-
         #network-canvas {
             position: fixed;
             top: 0; left: 0;
@@ -1350,49 +1390,48 @@ HTML_TEMPLATE = """
         .header-left { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
         .logo-drw { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 1.1rem; color: #fff; letter-spacing: 1px; text-shadow: 0 0 15px rgba(123, 44, 255, 0.2); cursor: pointer; white-space: nowrap; }
         .logo-drw span { color: #7b2cff; }
-        .header-nav { display: flex; gap: 1rem; list-style: none; flex-wrap: wrap; }
-        .header-nav a { text-decoration: none; color: var(--text-muted); font-size: 0.8rem; transition: 0.3s ease; font-weight: 500; cursor: pointer; white-space: nowrap; padding: 0.3rem 0.6rem; border-radius: 8px; }
-        .header-nav a:hover, .header-nav a.active { color: #fff; background: rgba(123, 44, 255, 0.15); text-shadow: 0 0 10px rgba(255,255,255,0.1); }
+        .header-nav { display: flex; gap: 0.5rem; list-style: none; flex-wrap: wrap; }
+        .header-nav a { text-decoration: none; color: var(--text-muted); font-size: 0.75rem; transition: 0.3s ease; font-weight: 500; cursor: pointer; padding: 0.4rem 0.8rem; border-radius: 8px; white-space: nowrap; }
+        .header-nav a:hover, .header-nav a.active { color: #fff; background: rgba(123, 44, 255, 0.15); }
         .header-right { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
-        .header-tag { font-size: 0.75rem; color: var(--text-muted); background: rgba(255,255,255,0.04); padding: 0.2rem 0.8rem; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05); white-space: nowrap; }
+        .header-tag { font-size: 0.7rem; color: var(--text-muted); background: rgba(255,255,255,0.04); padding: 0.2rem 0.8rem; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05); }
         .telegram-link-header {
             display: flex; align-items: center; gap: 0.4rem;
             background: rgba(36, 156, 241, 0.1); padding: 0.3rem 0.8rem;
             border-radius: 20px; border: 1px solid rgba(36, 156, 241, 0.2);
-            text-decoration: none; color: #fff; font-size: 0.75rem;
+            text-decoration: none; color: #fff; font-size: 0.7rem;
             transition: all 0.3s ease;
             white-space: nowrap;
         }
-        .telegram-link-header:hover { border-color: #249cf1; box-shadow: 0 0 20px rgba(36, 156, 241, 0.2); transform: translateY(-1px); }
+        .telegram-link-header:hover { border-color: #249cf1; box-shadow: 0 0 20px rgba(36, 156, 241, 0.2); }
 
         .section-content { display: none; animation: fadeInUp 0.6s forwards; }
         .section-content.active { display: block; }
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 
-        .hero-section { display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 2rem; padding: 1rem 0; }
-        .avatar-wrapper { position: relative; width: 100px; height: 100px; margin-bottom: 1rem; }
-        .avatar-img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 2px solid rgba(123, 44, 255, 0.2); box-shadow: 0 0 30px rgba(75, 15, 143, 0.3); transition: 0.3s ease; }
-        .avatar-wrapper:hover .avatar-img { transform: scale(1.02); box-shadow: 0 0 50px rgba(123, 44, 255, 0.4); }
+        .hero-section { display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 1.5rem; padding: 0.5rem 0; }
+        .avatar-wrapper { position: relative; width: 80px; height: 80px; margin-bottom: 0.5rem; }
+        .avatar-img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 2px solid rgba(123, 44, 255, 0.2); box-shadow: 0 0 30px rgba(75, 15, 143, 0.3); }
         .avatar-glow { position: absolute; top: -10px; left: -10px; right: -10px; bottom: -10px; border-radius: 50%; background: radial-gradient(circle, rgba(123, 44, 255, 0.15) 0%, transparent 70%); z-index: -1; animation: pulseGlow 3s infinite ease-in-out; }
         @keyframes pulseGlow { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.05); opacity: 0.6; } }
-        .hero-title { font-family: 'Space Grotesk', sans-serif; font-size: 2.5rem; font-weight: 700; background: linear-gradient(135deg, #fff 0%, #bb86fc 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 0.2rem; }
-        .hero-subtitle { color: var(--text-muted); font-size: 0.9rem; letter-spacing: 2px; margin-bottom: 0.5rem; }
-        .hero-creator-link { font-family: 'JetBrains Mono', monospace; color: #7b2cff; font-size: 1rem; text-decoration: none; transition: 0.3s ease; }
-        .hero-creator-link:hover { text-shadow: 0 0 15px rgba(123, 44, 255, 0.6); color: #fff; }
+        .hero-title { font-family: 'Space Grotesk', sans-serif; font-size: 2rem; font-weight: 700; background: linear-gradient(135deg, #fff 0%, #bb86fc 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .hero-subtitle { color: var(--text-muted); font-size: 0.8rem; letter-spacing: 2px; }
 
-        .card { background: var(--bg-card); backdrop-filter: blur(16px); border: 1px solid var(--glass-border); border-radius: 20px; padding: 1.2rem; margin-bottom: 1.5rem; box-shadow: 0 20px 60px rgba(0,0,0,0.45); }
-        .luhn-generator-card { background: rgba(13, 14, 28, 0.95); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,.05); border-radius: 16px; padding: 1.2rem; box-shadow: 0 8px 32px rgba(0,0,0,.4); }
-        .bins-input { width: 100%; min-height: 100px; background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.05); border-radius: 10px; color: #00FFF0; padding: 0.8rem; font-family: 'JetBrains Mono'; outline: none; resize: vertical; font-size: 0.85rem; }
-        .bin-verify-input { width: 100%; background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.05); border-radius: 10px; color: #00FFF0; padding: 0.8rem; font-family: 'JetBrains Mono'; outline: none; font-size: 0.85rem; }
-        .bin-verify-input:focus { border-color: #7b2cff; box-shadow: 0 0 20px rgba(123, 44, 255, 0.15); }
-        .card-inputs-row { display: flex; gap: 0.8rem; margin: 1rem 0; flex-wrap: wrap; }
-        .card-input-group { flex: 1; min-width: 80px; }
-        .card-input-group label { display: block; color: #8c8d9e; font-size: 0.65rem; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px; }
-        .card-select, .quantity-input { width: 100%; background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.05); border-radius: 10px; color: #00FFF0; padding: 0.7rem; font-family: 'JetBrains Mono'; outline: none; font-size: 0.85rem; }
-        .quantity-input { flex: 0 0 80px; width: 80px; }
-        .controls-row { display: flex; gap: 0.8rem; margin-bottom: 1rem; flex-wrap: wrap; }
-        .btn { padding: 0.8rem 1.5rem; border-radius: 10px; border: none; font-weight: 700; cursor: pointer; font-family: 'JetBrains Mono'; transition: .3s; text-transform: uppercase; font-size: 0.8rem; }
-        .btn-primary { flex: 1; background: #7928CA; color: #fff; min-width: 120px; }
+        .card { background: var(--bg-card); backdrop-filter: blur(16px); border: 1px solid var(--glass-border); border-radius: 16px; padding: 1rem; margin-bottom: 1.2rem; box-shadow: 0 20px 60px rgba(0,0,0,0.45); }
+        .card-dark { background: var(--card-bg); border: 1px solid rgba(255,255,255,.05); }
+        
+        .bins-input { width: 100%; min-height: 80px; background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.05); border-radius: 10px; color: #00FFF0; padding: 0.8rem; font-family: 'JetBrains Mono'; outline: none; resize: vertical; font-size: 0.8rem; }
+        .bins-input:focus { border-color: #7b2cff; box-shadow: 0 0 20px rgba(123, 44, 255, 0.1); }
+        
+        .card-inputs-row { display: flex; gap: 0.8rem; margin: 0.8rem 0; flex-wrap: wrap; }
+        .card-input-group { flex: 1; min-width: 70px; }
+        .card-input-group label { display: block; color: #8c8d9e; font-size: 0.6rem; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 1px; }
+        .card-select, .quantity-input { width: 100%; background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.05); border-radius: 8px; color: #00FFF0; padding: 0.6rem; font-family: 'JetBrains Mono'; outline: none; font-size: 0.8rem; }
+        .quantity-input { flex: 0 0 70px; width: 70px; }
+        
+        .controls-row { display: flex; gap: 0.6rem; margin-bottom: 0.8rem; flex-wrap: wrap; }
+        .btn { padding: 0.6rem 1.2rem; border-radius: 8px; border: none; font-weight: 700; cursor: pointer; font-family: 'JetBrains Mono'; transition: .3s; text-transform: uppercase; font-size: 0.7rem; }
+        .btn-primary { flex: 1; background: #7928CA; color: #fff; min-width: 100px; }
         .btn-primary:hover { box-shadow: 0 5px 20px rgba(121, 40, 202, .5); transform: translateY(-1px); }
         .btn-cyber { background: transparent; border: 1px solid #00FFF0; color: #00FFF0; }
         .btn-cyber:hover { background: #00FFF0; color: #000; }
@@ -1402,60 +1441,66 @@ HTML_TEMPLATE = """
         .btn-success:hover { background: #00ff88; color: #000; }
         .btn-purple { background: transparent; border: 1px solid #7b2cff; color: #7b2cff; }
         .btn-purple:hover { background: #7b2cff; color: #fff; }
-        .btn-sm { padding: 0.4rem 1rem; font-size: 0.7rem; }
-        .cards-list { max-height: 300px; overflow-y: auto; background: rgba(0,0,0,.3); border-radius: 10px; padding: 0.8rem; margin-bottom: 1rem; font-family: 'JetBrains Mono'; white-space: pre-wrap; color: #00FFF0; font-size: 0.8rem; word-break: break-all; }
-        .cards-list::-webkit-scrollbar { width: 4px; }
+        .btn-sm { padding: 0.3rem 0.8rem; font-size: 0.6rem; }
+        
+        .cards-list { max-height: 250px; overflow-y: auto; background: rgba(0,0,0,.3); border-radius: 8px; padding: 0.6rem; margin-bottom: 0.8rem; font-family: 'JetBrains Mono'; white-space: pre-wrap; color: #00FFF0; font-size: 0.75rem; word-break: break-all; }
+        .cards-list::-webkit-scrollbar { width: 3px; }
         .cards-list::-webkit-scrollbar-track { background: rgba(255,255,255,0.02); }
-        .cards-list::-webkit-scrollbar-thumb { background: #7b2cff; border-radius: 4px; }
+        .cards-list::-webkit-scrollbar-thumb { background: #7b2cff; border-radius: 3px; }
 
-        /* BIN RESULT */
-        .bin-result { background: rgba(0,0,0,.3); border-radius: 10px; padding: 1rem; font-family: 'JetBrains Mono'; color: #00FFF0; font-size: 0.85rem; min-height: 60px; }
-        .bin-result .label { color: #8c8d9e; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; }
+        /* VERIFICADOR */
+        .bin-tabs { display: flex; gap: 0.3rem; margin-bottom: 0.8rem; flex-wrap: wrap; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 0.5rem; }
+        .bin-tab-btn { padding: 0.4rem 1rem; border: none; background: transparent; color: var(--text-muted); cursor: pointer; font-family: 'Inter', sans-serif; font-weight: 600; font-size: 0.7rem; transition: 0.3s; border-radius: 6px; }
+        .bin-tab-btn:hover { color: #fff; background: rgba(123, 44, 255, 0.1); }
+        .bin-tab-btn.active { color: #fff; background: rgba(123, 44, 255, 0.2); }
+        .bin-tab-content { display: none; padding: 0.5rem 0; }
+        .bin-tab-content.active { display: block; }
+        
+        .bin-verify-input { width: 100%; background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.05); border-radius: 8px; color: #00FFF0; padding: 0.6rem 0.8rem; font-family: 'JetBrains Mono'; outline: none; font-size: 0.8rem; }
+        .bin-verify-input:focus { border-color: #7b2cff; box-shadow: 0 0 20px rgba(123, 44, 255, 0.1); }
+        
+        .bin-search-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+        .bin-search-row select, .bin-search-row input { flex: 1; min-width: 100px; background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.05); border-radius: 8px; color: #00FFF0; padding: 0.5rem 0.6rem; font-family: 'JetBrains Mono'; outline: none; font-size: 0.7rem; }
+        .bin-search-row select option { background: #1a1a2e; color: #fff; }
+        .bin-search-row input::placeholder { color: #555; }
+        
+        .bin-result { background: rgba(0,0,0,.3); border-radius: 8px; padding: 0.8rem; font-family: 'JetBrains Mono'; color: #00FFF0; font-size: 0.8rem; min-height: 50px; max-height: 300px; overflow-y: auto; }
+        .bin-result .label { color: #8c8d9e; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 1px; }
         .bin-result .value { color: #fff; font-weight: 600; }
-        .bin-result .success { color: #00ff88; }
         .bin-result .error { color: #ff3355; }
-        .bin-result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem 1.5rem; margin-top: 0.5rem; }
-        .bin-result-grid .item { display: flex; justify-content: space-between; padding: 0.3rem 0; border-bottom: 1px solid rgba(255,255,255,0.03); }
+        .bin-result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem 1rem; margin-top: 0.3rem; }
+        .bin-result-grid .item { display: flex; justify-content: space-between; padding: 0.2rem 0; border-bottom: 1px solid rgba(255,255,255,0.03); font-size: 0.75rem; }
+        .bin-result-list { max-height: 200px; overflow-y: auto; }
+        .bin-result-list .item { padding: 0.2rem 0; border-bottom: 1px solid rgba(255,255,255,0.03); font-size: 0.7rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .bin-result-list .item .bin-code { color: #00FFF0; font-weight: 600; min-width: 60px; }
+        .bin-result-list .item .bin-info { color: #8c8d9e; }
+        .bin-count { color: #8c8d9e; font-size: 0.7rem; margin-bottom: 0.3rem; }
 
-        footer { margin-top: 3rem; padding: 1.5rem 0; border-top: 1px solid rgba(255,255,255,0.03); display: flex; flex-direction: column; align-items: center; gap: 0.3rem; color: var(--text-muted); font-size: 0.75rem; text-align: center; }
-        footer a { color: #7b2cff; text-decoration: none; transition: 0.2s; }
+        footer { margin-top: 2rem; padding: 1rem 0; border-top: 1px solid rgba(255,255,255,0.03); display: flex; flex-direction: column; align-items: center; gap: 0.2rem; color: var(--text-muted); font-size: 0.7rem; text-align: center; }
+        footer a { color: #7b2cff; text-decoration: none; }
         footer a:hover { color: #fff; }
 
-        .tab-bar { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
-        .tab-btn { padding: 0.6rem 1.5rem; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02); color: var(--text-muted); cursor: pointer; font-family: 'Inter', sans-serif; font-weight: 600; font-size: 0.8rem; transition: 0.3s; }
-        .tab-btn:hover { background: rgba(123, 44, 255, 0.1); color: #fff; }
-        .tab-btn.active { background: rgba(123, 44, 255, 0.2); border-color: #7b2cff; color: #fff; }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-
         @media (max-width: 600px) { 
-            .app-container { padding: 0.8rem; }
-            .hero-title { font-size: 2rem; }
+            .app-container { padding: 0.5rem; }
+            .hero-title { font-size: 1.6rem; }
             .header-right { display: none; }
             .header-left { width: 100%; justify-content: center; flex-wrap: wrap; }
-            .btn-primary { width: 100%; justify-content: center; }
             .header-nav { justify-content: center; width: 100%; }
             .card-inputs-row { flex-direction: column; }
             .quantity-input { flex: 1 1 100%; width: 100%; }
-            .card { padding: 0.8rem; }
-            .luhn-generator-card { padding: 0.8rem; }
-            .bins-input { min-height: 80px; font-size: 0.75rem; }
-            .btn { padding: 0.7rem 1rem; font-size: 0.7rem; }
+            .card { padding: 0.6rem; }
+            .bins-input { min-height: 60px; font-size: 0.7rem; }
+            .btn { padding: 0.5rem 0.8rem; font-size: 0.6rem; }
             .controls-row { flex-direction: column; }
-            .cards-list { font-size: 0.7rem; max-height: 200px; }
-            .avatar-wrapper { width: 80px; height: 80px; }
-            header { border-radius: 20px; padding: 0.5rem 0.8rem; margin-bottom: 1rem; }
-            .telegram-link-header span { display: none; }
+            .cards-list { font-size: 0.65rem; max-height: 150px; }
+            .avatar-wrapper { width: 60px; height: 60px; }
+            header { border-radius: 16px; padding: 0.4rem 0.6rem; margin-bottom: 1rem; }
             .bin-result-grid { grid-template-columns: 1fr; }
-            .tab-bar { justify-content: center; }
-            .tab-btn { padding: 0.4rem 1rem; font-size: 0.7rem; }
-        }
-
-        @media (max-width: 400px) {
-            .hero-title { font-size: 1.6rem; }
-            .logo-drw { font-size: 0.9rem; }
-            .header-nav a { font-size: 0.7rem; }
-            .header-tag { font-size: 0.65rem; padding: 0.15rem 0.5rem; }
+            .bin-search-row { flex-direction: column; }
+            .bin-search-row select, .bin-search-row input { min-width: 100%; }
+            .bin-tabs { justify-content: center; }
+            .bin-tab-btn { padding: 0.3rem 0.6rem; font-size: 0.6rem; }
+            .telegram-link-header span { display: none; }
         }
     </style>
 </head>
@@ -1474,14 +1519,15 @@ HTML_TEMPLATE = """
         </div>
         <div class="header-right">
             <span class="header-tag">@Drwed03</span>
-            <a href="https://t.me/wedze_grupo" target="_blank" rel="noopener noreferrer" class="telegram-link-header">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2L2 9.5L8.5 14.5L12 22L21.5 2Z"/><path d="M21.5 2L8.5 14.5"/></svg>
+            <a href="https://t.me/wedze_grupo" target="_blank" class="telegram-link-header">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2L2 9.5L8.5 14.5L12 22L21.5 2Z"/><path d="M21.5 2L8.5 14.5"/></svg>
                 <span>TELEGRAM</span>
             </a>
         </div>
     </header>
 
-    <main class="app-container active">
+    <main class="app-container">
+        <!-- HOME -->
         <section id="section-home" class="section-content active">
             <div class="hero-section">
                 <div class="avatar-wrapper">
@@ -1490,17 +1536,17 @@ HTML_TEMPLATE = """
                 </div>
                 <h1 class="hero-title">DRWED03</h1>
                 <p class="hero-subtitle">BY • WEDZE_GRUPO</p>
-                <a href="https://t.me/wedze_grupo" target="_blank" class="hero-creator-link">@Drwed03</a>
+                <a href="https://t.me/wedze_grupo" target="_blank" style="font-family: 'JetBrains Mono'; color: #7b2cff; text-decoration: none;">@Drwed03</a>
             </div>
         </section>
 
+        <!-- GERADOR -->
         <section id="section-sistema" class="section-content">
-            <div class="hero-section" style="margin-bottom: 0.5rem; padding-bottom: 0.5rem;">
-                <h2 style="font-family: 'Space Grotesk', sans-serif; color: #fff; font-size: 1.8rem;">GERADOR</h2>
+            <div class="hero-section" style="margin-bottom: 0.3rem; padding-bottom: 0.3rem;">
+                <h2 style="font-family: 'Space Grotesk'; color: #fff; font-size: 1.5rem;">GERADOR</h2>
                 <p class="hero-subtitle">GERADOR DE CARDS + BIN</p>
             </div>
-
-            <div class="card luhn-generator-card">
+            <div class="card card-dark">
                 <textarea id="binInput" class="bins-input" spellcheck="false" placeholder="DIGITE OS BINS (EX: 512267, 512267XXXXXX, 340000 PARA AMEX)..."></textarea>
                 <div class="card-inputs-row">
                     <div class="card-input-group">
@@ -1532,37 +1578,69 @@ HTML_TEMPLATE = """
                     </div>
                 </div>
                 <div class="controls-row">
-                    <input type="number" id="quantity" class="quantity-input" value="10" min="1" aria-label="QUANTIDADE">
-                    <button class="btn btn-primary" type="button" onclick="generateCards()">GERAR AGORA</button>
+                    <input type="number" id="quantity" class="quantity-input" value="10" min="1">
+                    <button class="btn btn-primary" onclick="generateCards()">GERAR AGORA</button>
                 </div>
                 <div class="cards-list" id="cardsList">🔵 DIGITE OS BINS E CLIQUE EM GERAR</div>
                 <div class="controls-row">
-                    <button class="btn btn-cyber" type="button" onclick="copyCards()">📋 COPIAR</button>
-                    <button class="btn btn-danger" type="button" onclick="clearCards()">🗑️ LIMPAR</button>
+                    <button class="btn btn-cyber" onclick="copyCards()">📋 COPIAR</button>
+                    <button class="btn btn-danger" onclick="clearCards()">🗑️ LIMPAR</button>
                 </div>
             </div>
         </section>
 
-        <!-- ============================================================ -->
-        <!-- ABA VERIFICADOR DE BINS - IGUAL MOTOR.PY                       -->
-        <!-- ============================================================ -->
+        <!-- VERIFICADOR -->
         <section id="section-verificador" class="section-content">
-            <div class="hero-section" style="margin-bottom: 0.5rem; padding-bottom: 0.5rem;">
-                <h2 style="font-family: 'Space Grotesk', sans-serif; color: #fff; font-size: 1.8rem;">VERIFICADOR</h2>
+            <div class="hero-section" style="margin-bottom: 0.3rem; padding-bottom: 0.3rem;">
+                <h2 style="font-family: 'Space Grotesk'; color: #fff; font-size: 1.5rem;">VERIFICADOR</h2>
                 <p class="hero-subtitle">CONSULTE BINS EM NOSSA BASE</p>
             </div>
 
-            <div class="card luhn-generator-card">
-                <div class="controls-row" style="margin-bottom: 1rem;">
-                    <input type="text" id="binVerifyInput" class="bin-verify-input" placeholder="DIGITE O BIN (EX: 512267, 553636, 400000)" style="flex: 1; min-width: 150px;">
-                    <button class="btn btn-success" type="button" onclick="verifyBin()" style="min-width: 100px;">🔍 VERIFICAR</button>
+            <div class="card card-dark">
+                <div class="bin-tabs">
+                    <button class="bin-tab-btn active" onclick="switchBinTab('tab-verify')">🔍 VERIFICAR BIN</button>
+                    <button class="bin-tab-btn" onclick="switchBinTab('tab-search')">🔎 BUSCA AVANÇADA</button>
                 </div>
-                <div class="bin-result" id="binResult">
-                    <span style="color: #8c8d9e;">📌 DIGITE UM BIN E CLIQUE EM VERIFICAR</span>
+
+                <!-- ABA 1: VERIFICAR BIN -->
+                <div id="tab-verify" class="bin-tab-content active">
+                    <div class="controls-row" style="margin-bottom: 0.5rem;">
+                        <input type="text" id="binVerifyInput" class="bin-verify-input" placeholder="DIGITE O BIN (EX: 512267, 553636, 400000)" style="flex: 1;">
+                        <button class="btn btn-success" onclick="verifyBin()" style="min-width: 80px;">VERIFICAR</button>
+                    </div>
+                    <div class="bin-result" id="binResult">
+                        <span style="color: #8c8d9e;">📌 DIGITE UM BIN E CLIQUE EM VERIFICAR</span>
+                    </div>
+                    <div class="controls-row" style="margin-top: 0.5rem;">
+                        <button class="btn btn-cyber btn-sm" onclick="clearBinResult()">🗑️ LIMPAR</button>
+                        <button class="btn btn-purple btn-sm" onclick="exemploBin()">📝 EXEMPLO</button>
+                        <button class="btn btn-cyber btn-sm" onclick="copyBinResult()">📋 COPIAR</button>
+                    </div>
                 </div>
-                <div class="controls-row" style="margin-top: 1rem;">
-                    <button class="btn btn-cyber btn-sm" type="button" onclick="clearBinResult()">🗑️ LIMPAR</button>
-                    <button class="btn btn-purple btn-sm" type="button" onclick="exemploBin()">📝 EXEMPLO</button>
+
+                <!-- ABA 2: BUSCA AVANÇADA -->
+                <div id="tab-search" class="bin-tab-content">
+                    <div class="bin-search-row">
+                        <select id="searchBrand"><option value="">BANDEIRA</option></select>
+                        <select id="searchCountry"><option value="">PAÍS</option></select>
+                        <select id="searchLevel"><option value="">NÍVEL</option></select>
+                        <select id="searchType"><option value="">TIPO</option></select>
+                    </div>
+                    <div class="bin-search-row">
+                        <input type="text" id="searchBank" placeholder="BANCO (digite o nome)" style="flex: 1; min-width: 150px;">
+                        <input type="text" id="searchBin" placeholder="BIN (ex: 512)" style="flex: 1; min-width: 100px;">
+                    </div>
+                    <div class="controls-row">
+                        <button class="btn btn-primary" onclick="searchBins()" style="flex:1;">🔎 BUSCAR</button>
+                        <button class="btn btn-danger btn-sm" onclick="clearSearch()">LIMPAR</button>
+                    </div>
+                    <div class="bin-result" id="searchResult">
+                        <span style="color: #8c8d9e;">📌 SELECIONE FILTROS E CLIQUE EM BUSCAR</span>
+                    </div>
+                    <div class="controls-row" style="margin-top: 0.5rem;">
+                        <button class="btn btn-cyber btn-sm" onclick="copySearchResult()">📋 COPIAR</button>
+                        <button class="btn btn-purple btn-sm" onclick="exemploSearch()">📝 EXEMPLO</button>
+                    </div>
                 </div>
             </div>
         </section>
@@ -1570,300 +1648,412 @@ HTML_TEMPLATE = """
 
     <footer>
         <div style="font-size: 1rem; font-weight: bold; color: #7b2cff;">DRWED03</div>
-        <div>BY <a href="https://t.me/wedze_grupo" target="_blank" style="color: #fff;">T.ME/WEDZE_GRUPO</a></div>
-        <div style="font-size: 0.6rem; opacity: 0.5;">&copy; 2026 DRWED03</div>
+        <div>BY <a href="https://t.me/wedze_grupo" target="_blank">T.ME/WEDZE_GRUPO</a></div>
     </footer>
 
     <script>
-        function showSection(sectionId) {
-            document.querySelectorAll('.section-content').forEach(el => el.classList.remove('active'));
-            const section = document.getElementById('section-' + sectionId);
-            if (section) section.classList.add('active');
-            document.querySelectorAll('.header-nav a').forEach(el => el.classList.remove('active'));
-            const activeLink = Array.from(document.querySelectorAll('.header-nav a')).find(a => (a.getAttribute('onclick') || '').includes(sectionId));
-            if (activeLink) activeLink.classList.add('active');
+    // ============================================================
+    // NAVEGAÇÃO
+    // ============================================================
+    function showSection(sectionId) {
+        var sections = document.querySelectorAll('.section-content');
+        for (var i = 0; i < sections.length; i++) {
+            sections[i].classList.remove('active');
         }
-
-        const binInput = document.getElementById('binInput');
-        const cardsList = document.getElementById('cardsList');
-        const generatedCards = [];
-
-        async function generateCards() {
-            const pattern = binInput.value.trim();
-            const quantity = document.getElementById('quantity').value || '10';
-            if (!pattern) {
-                alert('DIGITE OS BINS E CLIQUE EM GERAR.');
-                return;
-            }
-            cardsList.textContent = '🔵 GERANDO...';
-            try {
-                const response = await fetch('/api/luhn/generate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        pattern,
-                        quantity,
-                        month: document.getElementById('cardMonth').value,
-                        year: document.getElementById('cardYear').value,
-                        cvv: document.getElementById('cardCvv').value
-                    })
-                });
-                const data = await response.json();
-                if (!response.ok || !data.ok) throw new Error(data.error || 'ERRO NA GERAÇÃO.');
-                generatedCards.splice(0, generatedCards.length, ...(data.results || []));
-                cardsList.textContent = generatedCards.join(String.fromCharCode(10)) || '🔵 NENHUM RESULTADO';
-            } catch (error) {
-                generatedCards.splice(0, generatedCards.length);
-                cardsList.textContent = '🔵 NENHUM RESULTADO';
-                alert(error.message);
+        var section = document.getElementById('section-' + sectionId);
+        if (section) section.classList.add('active');
+        
+        var navLinks = document.querySelectorAll('.header-nav a');
+        for (var i = 0; i < navLinks.length; i++) {
+            navLinks[i].classList.remove('active');
+        }
+        for (var i = 0; i < navLinks.length; i++) {
+            if (navLinks[i].getAttribute('onclick') && navLinks[i].getAttribute('onclick').indexOf(sectionId) !== -1) {
+                navLinks[i].classList.add('active');
+                break;
             }
         }
+    }
 
-        function copyCards() {
-            const text = generatedCards.join(String.fromCharCode(10));
-            if (!text) {
-                alert('NENHUM RESULTADO PARA COPIAR.');
-                return;
-            }
-            
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(text)
-                    .then(() => {
-                        const btn = document.querySelector('.btn-cyber');
-                        const originalText = btn.textContent;
-                        btn.textContent = '✅ COPIADO!';
-                        setTimeout(() => { btn.textContent = originalText; }, 2000);
-                    })
-                    .catch(() => fallbackCopy(text));
-            } else {
-                fallbackCopy(text);
+    // ============================================================
+    // VERIFICADOR - ABAS
+    // ============================================================
+    function switchBinTab(tabId) {
+        var contents = document.querySelectorAll('.bin-tab-content');
+        for (var i = 0; i < contents.length; i++) {
+            contents[i].classList.remove('active');
+        }
+        var btns = document.querySelectorAll('.bin-tab-btn');
+        for (var i = 0; i < btns.length; i++) {
+            btns[i].classList.remove('active');
+        }
+        var target = document.getElementById(tabId);
+        if (target) target.classList.add('active');
+        
+        for (var i = 0; i < btns.length; i++) {
+            if (btns[i].getAttribute('onclick') && btns[i].getAttribute('onclick').indexOf(tabId) !== -1) {
+                btns[i].classList.add('active');
+                break;
             }
         }
+    }
 
-        function fallbackCopy(text) {
-            const textarea = document.createElement('textarea');
-            textarea.value = text;
+    // ============================================================
+    // FUNÇÃO DE COPIA GENERICA (FUNCIONA EM TODOS OS NAVEGADORES)
+    // ============================================================
+    function copiarTexto(texto, botao, mensagemSucesso) {
+        if (!texto) {
+            alert('NENHUM RESULTADO PARA COPIAR.');
+            return;
+        }
+        
+        // Tenta usar a API Clipboard
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(texto).then(function() {
+                var original = botao.textContent;
+                botao.textContent = mensagemSucesso || '✅ COPIADO!';
+                setTimeout(function() { botao.textContent = original; }, 2000);
+            }).catch(function() {
+                // Fallback para navegadores que bloqueiam a API
+                fallbackCopiar(texto, botao);
+            });
+        } else {
+            // Fallback para navegadores sem suporte
+            fallbackCopiar(texto, botao);
+        }
+    }
+
+    function fallbackCopiar(texto, botao) {
+        try {
+            var textarea = document.createElement('textarea');
+            textarea.value = texto;
             textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
             textarea.style.left = '-9999px';
             textarea.style.top = '-9999px';
             document.body.appendChild(textarea);
             textarea.focus();
             textarea.select();
             
-            try {
-                const success = document.execCommand('copy');
-                const btn = document.querySelector('.btn-cyber');
-                const originalText = btn.textContent;
-                if (success) {
-                    btn.textContent = '✅ COPIADO!';
-                    setTimeout(() => { btn.textContent = originalText; }, 2000);
-                } else {
-                    btn.textContent = '❌ ERRO';
-                    setTimeout(() => { btn.textContent = originalText; }, 2000);
-                }
-            } catch (err) {
-                alert('❌ NÃO FOI POSSÍVEL COPIAR. COPIE MANUALMENTE.');
-            } finally {
-                document.body.removeChild(textarea);
-            }
-        }
-
-        function clearCards() {
-            generatedCards.splice(0, generatedCards.length);
-            cardsList.textContent = '🔵 DIGITE OS BINS E CLIQUE EM GERAR';
-        }
-
-        // ============================================================
-        // FUNÇÕES DO VERIFICADOR DE BINS
-        // ============================================================
-
-        const binResult = document.getElementById('binResult');
-
-        async function verifyBin() {
-            const binInput = document.getElementById('binVerifyInput').value.trim();
-            if (!binInput) {
-                binResult.innerHTML = '<span class="error">❌ DIGITE UM BIN PARA VERIFICAR</span>';
-                return;
-            }
-
-            const binClean = binInput.replace(/[^0-9]/g, '').slice(0, 6);
-            if (binClean.length < 6) {
-                binResult.innerHTML = '<span class="error">❌ BIN INVÁLIDO. DIGITE PELO MENOS 6 DÍGITOS.</span>';
-                return;
-            }
-
-            binResult.innerHTML = '🔄 CONSULTANDO...';
-
-            try {
-                const response = await fetch('/api/check_bin', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ bin: binClean })
-                });
-                const data = await response.json();
-
-                if (!data.success || !data.data) {
-                    binResult.innerHTML = `<span class="error">❌ BIN NÃO ENCONTRADO: <strong>${binClean}</strong></span>`;
-                    return;
-                }
-
-                const d = data.data;
-                const tipoMap = {
-                    'CREDIT': 'CRÉDITO',
-                    'DEBIT': 'DÉBITO',
-                    'CREDIT/DEBIT': 'CRÉDITO/DÉBITO',
-                    'PREPAID': 'PRÉ-PAGO',
-                    'CHARGE': 'CARGA',
-                    'UNKNOWN': 'DESCONHECIDO'
-                };
-                const nivelMap = {
-                    'PERSONAL': 'PESSOAL',
-                    'BUSINESS': 'EMPRESARIAL',
-                    'CORPORATE': 'CORPORATIVO',
-                    'PREMIER': 'PREMIER',
-                    'SIGNATURE': 'SIGNATURE',
-                    'WORLD': 'WORLD',
-                    'ELITE': 'ELITE',
-                    'PLATINUM': 'PLATINUM',
-                    'GOLD': 'GOLD',
-                    'TITANIUM': 'TITANIUM'
-                };
-
-                const pais = (d.country || 'INTERNACIONAL').toUpperCase();
-                const bandeira = (d.brand || 'DESCONHECIDO').toUpperCase();
-                const banco = (d.bank || 'DESCONHECIDO').toUpperCase();
-                const nivel = (d.level || 'N/A').toUpperCase();
-                const tipo = tipoMap[d.type] || d.type || 'DESCONHECIDO';
-                const nivelTrad = nivelMap[nivel] || nivel;
-
-                const emojisBandeira = {
-                    'VISA': '💳', 'MASTERCARD': '💳', 'AMERICAN EXPRESS': '💳',
-                    'AMEX': '💳', 'DISCOVER': '💳', 'DINERS CLUB': '💳',
-                    'JCB': '💳', 'ELO': '💳', 'HIPERCARD': '💳',
-                    'AURA': '💳', 'DANKORT': '💳', 'UNIONPAY': '💳', 'MAESTRO': '💳'
-                };
-                const emojisBanco = {
-                    'MACYS': '🏬', 'BANCO DO BRASIL': '🏦', 'BRADESCO': '🏦',
-                    'ITAU': '🏦', 'SANTANDER': '🏦', 'CAIXA': '🏦',
-                    'NU BANK': '💜', 'NUBANK': '💜', 'INTER': '🧡',
-                    'BANCO INTER': '🧡', 'C6 BANK': '🟣'
-                };
-
-                let emojiCard = emojisBandeira[bandeira] || '💳';
-                let emojiBank = '🏦';
-                for (const [key, val] of Object.entries(emojisBanco)) {
-                    if (banco.includes(key)) { emojiBank = val; break; }
-                }
-
-                binResult.innerHTML = `
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                        <span class="label">🔍 BIN CONSULTADO</span>
-                        <span class="value" style="color: #00FFF0; font-size: 1.1rem;">${binClean}</span>
-                    </div>
-                    <div class="bin-result-grid">
-                        <div class="item"><span class="label">🌎 PAÍS</span><span class="value">${pais}</span></div>
-                        <div class="item"><span class="label">${emojiCard} BANDEIRA</span><span class="value">${bandeira}</span></div>
-                        <div class="item"><span class="label">${emojiBank} BANCO</span><span class="value">${banco}</span></div>
-                        <div class="item"><span class="label">🏆 NÍVEL</span><span class="value">${nivelTrad}</span></div>
-                        <div class="item"><span class="label">💳 TIPO</span><span class="value">${tipo}</span></div>
-                        <div class="item"><span class="label">⏱️ TEMPO</span><span class="value">0.00 ms</span></div>
-                    </div>
-                `;
-            } catch (error) {
-                binResult.innerHTML = `<span class="error">❌ ERRO AO CONSULTAR: ${error.message}</span>`;
-            }
-        }
-
-        function clearBinResult() {
-            document.getElementById('binVerifyInput').value = '';
-            binResult.innerHTML = '<span style="color: #8c8d9e;">📌 DIGITE UM BIN E CLIQUE EM VERIFICAR</span>';
-        }
-
-        function exemploBin() {
-            document.getElementById('binVerifyInput').value = '512267';
-            verifyBin();
-        }
-
-        // ============================================================
-        // CANVAS PARTICLES
-        // ============================================================
-
-        const canvas = document.getElementById('network-canvas');
-        const ctx = canvas.getContext('2d');
-        let width, height;
-        let particles = [];
-        const PARTICLE_COUNT = 60;
-        const CONNECTION_DISTANCE = 150;
-
-        function resize() {
-            width = canvas.width = window.innerWidth;
-            height = canvas.height = window.innerHeight;
-        }
-        window.addEventListener('resize', resize);
-        resize();
-
-        class Particle {
-            constructor() {
-                this.x = Math.random() * width;
-                this.y = Math.random() * height;
-                this.vx = (Math.random() - 0.5) * 0.6;
-                this.vy = (Math.random() - 0.5) * 0.6;
-                this.radius = Math.random() * 1.5 + 0.5;
-            }
-            update() {
-                this.x += this.vx;
-                this.y += this.vy;
-                if (this.x < 0 || this.x > width) this.vx *= -1;
-                if (this.y < 0 || this.y > height) this.vy *= -1;
-            }
-            draw() {
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-                ctx.fillStyle = '#7b2cff';
-                ctx.shadowBlur = 5;
-                ctx.shadowColor = '#7b2cff';
-                ctx.fill();
-                ctx.shadowBlur = 0;
-            }
-        }
-
-        for (let i = 0; i < PARTICLE_COUNT; i++) {
-            particles.push(new Particle());
-        }
-
-        function animate() {
-            ctx.clearRect(0, 0, width, height);
+            var sucesso = document.execCommand('copy');
+            document.body.removeChild(textarea);
             
-            particles.forEach(p => {
-                p.update();
-                p.draw();
+            if (sucesso) {
+                var original = botao.textContent;
+                botao.textContent = '✅ COPIADO!';
+                setTimeout(function() { botao.textContent = original; }, 2000);
+            } else {
+                alert('❌ NÃO FOI POSSÍVEL COPIAR. COPIE MANUALMENTE.');
+            }
+        } catch (err) {
+            alert('❌ NÃO FOI POSSÍVEL COPIAR. COPIE MANUALMENTE.');
+        }
+    }
+
+    // ============================================================
+    // GERADOR
+    // ============================================================
+    var binInput = document.getElementById('binInput');
+    var cardsList = document.getElementById('cardsList');
+    var generatedCards = [];
+
+    async function generateCards() {
+        var pattern = binInput.value.trim();
+        var quantity = document.getElementById('quantity').value || '10';
+        if (!pattern) { alert('DIGITE OS BINS E CLIQUE EM GERAR.'); return; }
+        cardsList.textContent = '🔵 GERANDO...';
+        try {
+            var response = await fetch('/api/luhn/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    pattern: pattern,
+                    quantity: quantity,
+                    month: document.getElementById('cardMonth').value,
+                    year: document.getElementById('cardYear').value,
+                    cvv: document.getElementById('cardCvv').value
+                })
             });
+            var data = await response.json();
+            if (!response.ok || !data.ok) throw new Error(data.error || 'ERRO NA GERAÇÃO.');
+            generatedCards = data.results || [];
+            cardsList.textContent = generatedCards.join('\\n') || '🔵 NENHUM RESULTADO';
+        } catch (error) {
+            generatedCards = [];
+            cardsList.textContent = '🔵 NENHUM RESULTADO';
+            alert(error.message);
+        }
+    }
 
-            for (let i = 0; i < particles.length; i++) {
-                for (let j = i + 1; j < particles.length; j++) {
-                    const dx = particles[i].x - particles[j].x;
-                    const dy = particles[i].y - particles[j].y;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
+    function copyCards() {
+        var text = generatedCards.join('\\n');
+        var btn = document.querySelector('.btn-cyber');
+        copiarTexto(text, btn);
+    }
 
-                    if (dist < CONNECTION_DISTANCE) {
-                        ctx.beginPath();
-                        ctx.moveTo(particles[i].x, particles[i].y);
-                        ctx.lineTo(particles[j].x, particles[j].y);
-                        ctx.strokeStyle = `rgba(123, 44, 255, ${1 - dist / CONNECTION_DISTANCE})`;
-                        ctx.lineWidth = 0.5;
-                        ctx.stroke();
+    function clearCards() {
+        generatedCards = [];
+        cardsList.textContent = '🔵 DIGITE OS BINS E CLIQUE EM GERAR';
+    }
+
+    // ============================================================
+    // VERIFICADOR - ABA 1: VERIFICAR BIN
+    // ============================================================
+    var binResult = document.getElementById('binResult');
+    var lastBinResult = '';
+
+    async function verifyBin() {
+        var binInput = document.getElementById('binVerifyInput').value.trim();
+        if (!binInput) {
+            binResult.innerHTML = '<span class="error">❌ DIGITE UM BIN PARA VERIFICAR</span>';
+            return;
+        }
+        var binClean = binInput.replace(/[^0-9]/g, '').slice(0, 6);
+        if (binClean.length < 6) {
+            binResult.innerHTML = '<span class="error">❌ BIN INVÁLIDO. DIGITE PELO MENOS 6 DÍGITOS.</span>';
+            return;
+        }
+        binResult.innerHTML = '🔄 CONSULTANDO...';
+        try {
+            var response = await fetch('/api/check_bin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bin: binClean })
+            });
+            var data = await response.json();
+            if (!data.success || !data.data) {
+                binResult.innerHTML = '<span class="error">❌ BIN NÃO ENCONTRADO: <strong>' + binClean + '</strong></span>';
+                return;
+            }
+            var d = data.data;
+            var tipoMap = { 'CREDIT':'CRÉDITO','DEBIT':'DÉBITO','CREDIT/DEBIT':'CRÉDITO/DÉBITO','PREPAID':'PRÉ-PAGO','CHARGE':'CARGA','UNKNOWN':'DESCONHECIDO' };
+            var nivelMap = { 'PERSONAL':'PESSOAL','BUSINESS':'EMPRESARIAL','CORPORATE':'CORPORATIVO','PREMIER':'PREMIER','SIGNATURE':'SIGNATURE','WORLD':'WORLD','ELITE':'ELITE','PLATINUM':'PLATINUM','GOLD':'GOLD','TITANIUM':'TITANIUM' };
+            var pais = (d.country || 'INTERNACIONAL').toUpperCase();
+            var bandeira = (d.brand || 'DESCONHECIDO').toUpperCase();
+            var banco = (d.bank || 'DESCONHECIDO').toUpperCase();
+            var nivel = (d.level || 'N/A').toUpperCase();
+            var tipo = tipoMap[d.type] || d.type || 'DESCONHECIDO';
+            var nivelTrad = nivelMap[nivel] || nivel;
+            var emojis = { 'VISA':'💳','MASTERCARD':'💳','AMERICAN EXPRESS':'💳','AMEX':'💳','DISCOVER':'💳','DINERS CLUB':'💳','JCB':'💳','ELO':'💳','HIPERCARD':'💳','AURA':'💳','DANKORT':'💳','UNIONPAY':'💳','MAESTRO':'💳' };
+            var emojisBanco = { 'MACYS':'🏬','BANCO DO BRASIL':'🏦','BRADESCO':'🏦','ITAU':'🏦','SANTANDER':'🏦','CAIXA':'🏦','NU BANK':'💜','NUBANK':'💜','INTER':'🧡','BANCO INTER':'🧡','C6 BANK':'🟣' };
+            var emojiCard = emojis[bandeira] || '💳';
+            var emojiBank = '🏦';
+            for (var key in emojisBanco) {
+                if (banco.indexOf(key) !== -1) { emojiBank = emojisBanco[key]; break; }
+            }
+            
+            lastBinResult = 'BIN: ' + binClean + ' | PAÍS: ' + pais + ' | BANDEIRA: ' + bandeira + ' | BANCO: ' + banco + ' | NÍVEL: ' + nivelTrad + ' | TIPO: ' + tipo;
+            
+            binResult.innerHTML = 
+                '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem;">' +
+                    '<span class="label">🔍 BIN CONSULTADO</span>' +
+                    '<span class="value" style="color:#00FFF0;font-size:1rem;">' + binClean + '</span>' +
+                '</div>' +
+                '<div class="bin-result-grid">' +
+                    '<div class="item"><span class="label">🌎 PAÍS</span><span class="value">' + pais + '</span></div>' +
+                    '<div class="item"><span class="label">' + emojiCard + ' BANDEIRA</span><span class="value">' + bandeira + '</span></div>' +
+                    '<div class="item"><span class="label">' + emojiBank + ' BANCO</span><span class="value">' + banco + '</span></div>' +
+                    '<div class="item"><span class="label">🏆 NÍVEL</span><span class="value">' + nivelTrad + '</span></div>' +
+                    '<div class="item"><span class="label">💳 TIPO</span><span class="value">' + tipo + '</span></div>' +
+                    '<div class="item"><span class="label">⏱️ TEMPO</span><span class="value">0.00 ms</span></div>' +
+                '</div>';
+        } catch (error) {
+            binResult.innerHTML = '<span class="error">❌ ERRO: ' + error.message + '</span>';
+        }
+    }
+
+    function clearBinResult() {
+        document.getElementById('binVerifyInput').value = '';
+        lastBinResult = '';
+        binResult.innerHTML = '<span style="color:#8c8d9e;">📌 DIGITE UM BIN E CLIQUE EM VERIFICAR</span>';
+    }
+
+    function exemploBin() {
+        document.getElementById('binVerifyInput').value = '512267';
+        verifyBin();
+    }
+
+    function copyBinResult() {
+        var btn = document.querySelector('#tab-verify .btn-cyber:last-child');
+        copiarTexto(lastBinResult, btn);
+    }
+
+    // ============================================================
+    // VERIFICADOR - ABA 2: BUSCA AVANÇADA
+    // ============================================================
+    var searchResults = [];
+
+    async function loadFilterOptions() {
+        try {
+            var [countries, brands, types, levels] = await Promise.all([
+                fetch('/api/countries').then(function(r) { return r.json(); }),
+                fetch('/api/brands').then(function(r) { return r.json(); }),
+                fetch('/api/types').then(function(r) { return r.json(); }),
+                fetch('/api/levels').then(function(r) { return r.json(); })
+            ]);
+            
+            var populateSelect = function(id, data, label) {
+                var sel = document.getElementById(id);
+                if (!sel) return;
+                sel.innerHTML = '<option value="">' + label + '</option>';
+                if (data && Array.isArray(data)) {
+                    for (var i = 0; i < data.length; i++) {
+                        if (data[i]) {
+                            var opt = document.createElement('option');
+                            opt.value = data[i];
+                            opt.textContent = data[i];
+                            sel.appendChild(opt);
+                        }
                     }
                 }
-            }
-            requestAnimationFrame(animate);
-        }
-        animate();
+            };
+            populateSelect('searchCountry', countries.countries || [], 'PAÍS');
+            populateSelect('searchBrand', brands.brands || [], 'BANDEIRA');
+            populateSelect('searchType', types.types || [], 'TIPO');
+            populateSelect('searchLevel', levels.levels || [], 'NÍVEL');
+        } catch(e) { console.error('Erro ao carregar filtros:', e); }
+    }
 
-        // ============================================================
-        // SHOW VERIFICADOR SE HASH
-        // ============================================================
-        if (window.location.hash === '#section-verificador') showSection('verificador');
-        if (window.location.hash === '#section-sistema') showSection('sistema');
+    async function searchBins() {
+        var filters = {
+            brand: document.getElementById('searchBrand').value,
+            country: document.getElementById('searchCountry').value,
+            bank: document.getElementById('searchBank').value.trim(),
+            type: document.getElementById('searchType').value,
+            level: document.getElementById('searchLevel').value,
+            bin: document.getElementById('searchBin').value.trim()
+        };
+        var resultDiv = document.getElementById('searchResult');
+        resultDiv.innerHTML = '🔄 BUSCANDO...';
+        try {
+            var response = await fetch('/api/search_bins', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(filters)
+            });
+            var data = await response.json();
+            if (!data.success) { resultDiv.innerHTML = '<span class="error">❌ ERRO NA BUSCA</span>'; return; }
+            searchResults = data.results || [];
+            if (searchResults.length === 0) {
+                resultDiv.innerHTML = '<span style="color:#8c8d9e;">📌 NENHUM BIN ENCONTRADO COM ESSES FILTROS</span>';
+                return;
+            }
+            var html = '<div class="bin-count">📊 ' + searchResults.length + ' BINS ENCONTRADOS</div><div class="bin-result-list">';
+            for (var i = 0; i < searchResults.length; i++) {
+                var r = searchResults[i];
+                html += '<div class="item"><span class="bin-code">' + r.bin + '</span><span class="bin-info">' + r.brand + ' | ' + r.bank + ' | ' + r.country + '</span></div>';
+            }
+            html += '</div>';
+            resultDiv.innerHTML = html;
+        } catch (error) {
+            resultDiv.innerHTML = '<span class="error">❌ ERRO: ' + error.message + '</span>';
+        }
+    }
+
+    function clearSearch() {
+        document.getElementById('searchBrand').value = '';
+        document.getElementById('searchCountry').value = '';
+        document.getElementById('searchBank').value = '';
+        document.getElementById('searchType').value = '';
+        document.getElementById('searchLevel').value = '';
+        document.getElementById('searchBin').value = '';
+        document.getElementById('searchResult').innerHTML = '<span style="color:#8c8d9e;">📌 SELECIONE FILTROS E CLIQUE EM BUSCAR</span>';
+        searchResults = [];
+    }
+
+    function copySearchResult() {
+        if (searchResults.length === 0) { alert('NENHUM RESULTADO PARA COPIAR.'); return; }
+        var text = '';
+        for (var i = 0; i < searchResults.length; i++) {
+            var r = searchResults[i];
+            text += r.bin + '|' + r.brand + '|' + r.bank + '|' + r.country + '|' + r.type + '|' + r.level + '\\n';
+        }
+        var btn = document.querySelector('#tab-search .btn-cyber');
+        copiarTexto(text, btn);
+    }
+
+    function exemploSearch() {
+        document.getElementById('searchBrand').value = 'VISA';
+        document.getElementById('searchCountry').value = 'BRASIL';
+        searchBins();
+    }
+
+    // ============================================================
+    // CARREGAR FILTROS
+    // ============================================================
+    loadFilterOptions();
+
+    if (window.location.hash === '#section-verificador') showSection('verificador');
+    if (window.location.hash === '#section-sistema') showSection('sistema');
+
+    // ============================================================
+    // CANVAS PARTICLES
+    // ============================================================
+    var canvas = document.getElementById('network-canvas');
+    var ctx = canvas.getContext('2d');
+    var width, height, particles = [];
+    var PARTICLE_COUNT = 50;
+
+    function resize() {
+        width = canvas.width = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function Particle() {
+        this.x = Math.random() * width;
+        this.y = Math.random() * height;
+        this.vx = (Math.random() - 0.5) * 0.5;
+        this.vy = (Math.random() - 0.5) * 0.5;
+        this.radius = Math.random() * 1.5 + 0.5;
+    }
+
+    Particle.prototype.update = function() {
+        this.x += this.vx;
+        this.y += this.vy;
+        if (this.x < 0 || this.x > width) this.vx *= -1;
+        if (this.y < 0 || this.y > height) this.vy *= -1;
+    };
+
+    Particle.prototype.draw = function() {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fillStyle = '#7b2cff';
+        ctx.shadowBlur = 5;
+        ctx.shadowColor = '#7b2cff';
+        ctx.fill();
+        ctx.shadowBlur = 0;
+    };
+
+    for (var i = 0; i < PARTICLE_COUNT; i++) {
+        particles.push(new Particle());
+    }
+
+    function animate() {
+        ctx.clearRect(0, 0, width, height);
+        for (var i = 0; i < particles.length; i++) {
+            particles[i].update();
+            particles[i].draw();
+        }
+        for (var i = 0; i < particles.length; i++) {
+            for (var j = i + 1; j < particles.length; j++) {
+                var dx = particles[i].x - particles[j].x;
+                var dy = particles[i].y - particles[j].y;
+                var dist = Math.sqrt(dx*dx + dy*dy);
+                if (dist < 150) {
+                    ctx.beginPath();
+                    ctx.moveTo(particles[i].x, particles[i].y);
+                    ctx.lineTo(particles[j].x, particles[j].y);
+                    ctx.strokeStyle = 'rgba(123, 44, 255, ' + (1 - dist / 150) + ')';
+                    ctx.lineWidth = 0.5;
+                    ctx.stroke();
+                }
+            }
+        }
+        requestAnimationFrame(animate);
+    }
+    animate();
     </script>
 </body>
 </html>"""
@@ -1899,7 +2089,7 @@ if __name__ == '__main__':
     print("📌 INTERFACE WEB:")
     print("   HTTP://LOCALHOST:5000")
     print("   - ABA GERADOR: GERAR CARDS")
-    print("   - ABA VERIFICADOR: CONSULTAR BINS")
+    print("   - ABA VERIFICADOR: VERIFICAR BIN | BUSCA AVANÇADA")
     print()
     print("💡 PRESSIONE CTRL+C PARA PARAR")
     print("=" * 60)
