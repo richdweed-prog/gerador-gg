@@ -1309,7 +1309,7 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>DRWED03 · GERADOR + BIN</title>
+    <title>GERADOR · CAMBADA 🔥</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz@14..32&family=JetBrains+Mono&family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
@@ -2077,7 +2077,7 @@ if __name__ == '__main__':
     load_bins_from_csv()
     
     print("=" * 60)
-    print("🚀 GERADOR + BOT BIN + WEBHOOK - DRWED03")
+    print("🚀GERADOR · CAMBADA 🔥")
     print("=" * 60)
     print(f"📌 BOT: @{BOT_USERNAME}")
     print(f"📌 TOKEN: {TOKEN[:10]}...")
