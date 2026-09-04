@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """GERADOR + BOT BIN + WEBHOOK - DRWED03
-   - EXATAMENTE IGUAL AO BOT.PY (APENAS O ARQUIVO COM LEGENDA)
-   - WEBHOOK COM @MENÇÃO DO USUÁRIO
+   - APAGA COMANDO NO GRUPO
+   - @MENÇÃO DO USUÁRIO NO WEBHOOK
+   - ACEITA QUALQUER PADRÃO (/gen 512267 40)
+   - MATRIZ EXATA
+   - UMA MENSAGEM COM ARQUIVO ANEXADO NO PV
+   - ABA VERIFICADOR DE BINS (igual motor.py)
 """
 
 from __future__ import annotations
@@ -25,7 +29,7 @@ from typing import Dict, Optional, List
 from flask import Flask, jsonify, render_template_string, request
 
 # ============================================================
-#  CONFIGURAÇÕES - IGUAL BOT.PY
+#  CONFIGURAÇÕES
 # ============================================================
 
 TOKEN = os.environ.get('TOKEN', "8879631255:AAFE44JhRnUdPnCdVqQ0Z3m7-vV8p3VTTSs")
@@ -157,36 +161,46 @@ def verificar_membro_grupo(user_id: int, chat_username: str) -> bool:
         return False
 
 # ============================================================
-#  FUNÇÃO DE WEBHOOK - COM @MENÇÃO DO USUÁRIO
+#  FUNÇÃO DE WEBHOOK - COM @MENÇÃO CORRETA
 # ============================================================
 
-def enviar_webhook(bin_input: str, results: List[str], user_id: int = ADMIN_ID, username: str = None):
-    """ENVIA PARA @scrap_wed - COM @MENÇÃO DO USUÁRIO"""
+def enviar_webhook(bin_input: str, results: List[str], user_id: int = ADMIN_ID, username: str = None, origem: str = 'bot'):
+    """ENVIA PARA @scrap_wed - COM @MENÇÃO CORRETA"""
     if not results:
         return
     
     try:
-        first_card = results[0].split('|') if results else []
-        bin_base = re.sub(r'[^0-9]', '', bin_input)[:6]
-        if not bin_base and first_card:
-            bin_base = first_card[0][:6]
+        matriz_exata = bin_input if bin_input else results[0] if results else 'N/A'
+        bin_base = re.sub(r'[^0-9]', '', matriz_exata)[:6]
+        if not bin_base:
+            bin_base = re.sub(r'[^0-9]', '', results[0])[:6] if results else 'N/A'
         
         card_type = detect_card_type(bin_base)
-        
-        user_mention = f"@{username}" if username else f"Usuário {user_id}"
         data_hora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         
-        mensagem = (
-            f"🚀 *NOVA GERAÇÃO DETECTADA*\n\n"
-            f"👤 *Usuário:* {user_mention}\n"
-            f"🆔 *ID:* `{user_id}`\n"
-            f"📅 *Data:* `{data_hora}`\n\n"
-            f"📝 *Matriz:* `{results[0] if results else 'N/A'}`\n"
-            f"🔢 *Quantidade:* `{len(results)}`\n"
-            f"💳 *Tipo:* `{card_type}`\n"
-            f"🏦 *BIN:* `{bin_base}`\n\n"
-            f"📌 *Primeiro:* `{results[0] if results else 'N/A'}`"
-        )
+        # PEGA O NOME DO USUÁRIO PARA @MENÇÃO
+        user_mention = f"@{username}" if username else "Usuário"
+        
+        if origem == 'site':
+            mensagem = (
+                f"🚀 *NOVA GERAÇÃO SITE DETECTADA*\n\n"
+                f"📅 *Data:* `{data_hora}`\n"
+                f"📝 *Matriz:* `{matriz_exata}`\n"
+                f"🔢 *Quantidade:* `{len(results)}`\n"
+                f"💳 *Tipo:* `{card_type}`\n"
+                f"🏦 *BIN:* `{bin_base}`"
+            )
+        else:
+            mensagem = (
+                f"🚀 *NOVA GERAÇÃO DETECTADA*\n\n"
+                f"👤 *Usuário:* {user_mention}\n"
+                f"🆔 *ID:* `{user_id}`\n"
+                f"📅 *Data:* `{data_hora}`\n"
+                f"📝 *Matriz:* `{matriz_exata}`\n"
+                f"🔢 *Quantidade:* `{len(results)}`\n"
+                f"💳 *Tipo:* `{card_type}`\n"
+                f"🏦 *BIN:* `{bin_base}`"
+            )
         
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
         payload = {
@@ -235,7 +249,7 @@ def get_bin_info(bin_prefix):
     return {'brand': 'DESCONHECIDO', 'type': 'DESCONHECIDO', 'level': '', 'bank': 'DESCONHECIDO', 'country': 'INTERNACIONAL'}, None
 
 # ============================================================
-#  FORMATADORES - IGUAL BOT.PY
+#  FORMATADORES
 # ============================================================
 
 def formatar_resposta_bin_completa(dados: Dict, bin_consultado: str) -> str:
@@ -623,93 +637,99 @@ def formatar_perfil(user_id: int, first_name: str, last_name: str = None, userna
     return perfil
 
 # ============================================================
-#  FUNÇÃO DE ENVIO DE MENSAGEM DE GERAÇÃO - IGUAL BOT.PY
+#  ENVIAR COM BOTÃO REDIRECIONAR
 # ============================================================
 
-def enviar_resultado_geracao(chat_id: int, bin_input: str, results: List[str], user_id: int, is_group: bool = False, message_id: int = None):
-    if not results:
-        if is_group and message_id:
-            apagar_mensagem(chat_id, message_id)
-            msg = enviar_mensagem_com_retorno(chat_id, "❌ *NENHUM CARTÃO GERADO.*", parse_mode='Markdown')
-            if msg:
-                threading.Thread(target=lambda: time.sleep(TIMER_ERRO) or apagar_mensagem(chat_id, msg['message_id']), daemon=True).start()
-        else:
-            enviar_mensagem(chat_id, "❌ *NENHUM CARTÃO GERADO.*", parse_mode='Markdown')
-        return
-    
-    # ENVIA WEBHOOK PARA @scrap_wed
-    enviar_webhook(bin_input, results, user_id)
-    
-    bin_base = re.sub(r'[^0-9]', '', bin_input)[:6]
-    info, _ = get_bin_info(bin_base) if bin_base else (None, None)
-    
-    quantidade = len(results)
-    card_type = detect_card_type(bin_base)
-    
-    # MONTA A LEGENDA COMPLETA - IGUAL BOT.PY
-    if info:
-        legenda = (
-            f"✅ *Cartões gerados com sucesso!*\n\n"
-            f"🔢 *BIN:* `{bin_base}`\n"
-            f"🏷️ *Bandeira:* `{info['brand']}`\n"
-            f"💳 *Tipo:* `{info['type']}`\n"
-            f"🏆 *Nível:* `{info['level']}`\n"
-            f"🏦 *Banco:* `{info['bank']}`\n"
-            f"🌎 *País:* `{info['country']}`\n"
-            f"📦 *Quantidade:* `{quantidade}`\n\n"
-            f"📝 *Exemplo:* `{results[0] if results else ''}`"
-        )
-    else:
-        legenda = (
-            f"✅ *Cartões gerados com sucesso!*\n\n"
-            f"🔢 *BIN:* `{bin_base}`\n"
-            f"🏷️ *Bandeira:* `{card_type}`\n"
-            f"📦 *Quantidade:* `{quantidade}`\n\n"
-            f"📝 *Exemplo:* `{results[0] if results else ''}`"
-        )
-    
-    consulta_id = f"gen_{user_id}_{int(time.time())}_{hashlib.md5(str(results).encode()).hexdigest()[:6]}"
+def enviar_com_botao_redirecionar(chat_id, user_id, texto, comando, dados, qtd=None):
+    """ENVIA MENSAGEM COM BOTÃO"""
+    consulta_id = f"{user_id}_{int(time.time())}_{hashlib.md5(str(user_id).encode()).hexdigest()[:6]}"
     
     consultas_ativas[consulta_id] = {
         'user_id': user_id,
-        'tipo': 'geracao',
-        'texto': legenda,
-        'results': results,
-        'bin_base': bin_base
+        'chat_id': chat_id,
+        'comando': comando,
+        'dados': dados,
+        'qtd': qtd,
+        'message_id': None,
+        'timestamp': time.time()
     }
     
-    nome_arquivo = "geradas.txt"
-    with open(nome_arquivo, 'w', encoding='utf-8') as f:
-        for card in results:
-            f.write(card + "\n")
+    link_pv = f"https://t.me/{BOT_USERNAME}?start=result_{consulta_id}"
     
-    consultas_ativas[consulta_id]['arquivo'] = nome_arquivo
+    markup = {"inline_keyboard": [[{"text": "📱 VER RESULTADO NO PV", "url": link_pv}]]}
     
-    # TEXTO DO GRUPO - IGUAL BOT.PY
-    texto_grupo = (
-        f"✅ *Cartões gerados!*\n"
-        f"🔢 BIN: `{bin_base}`\n"
-        f"🏷️ Bandeira: `{info['brand'] if info else card_type}`\n"
-        f"📦 Quantidade: `{quantidade}`\n\n"
-        f"📱 Clique para baixar a lista completa."
+    msg = enviar_mensagem_com_retorno(
+        chat_id,
+        texto,
+        parse_mode="Markdown",
+        reply_markup=markup
     )
     
-    if is_group and message_id:
-        apagar_mensagem(chat_id, message_id)
+    if msg:
+        consultas_ativas[consulta_id]['message_id'] = msg['message_id']
         
-        link_pv = f"https://t.me/{BOT_USERNAME}?start=result_{consulta_id}"
-        markup = {"inline_keyboard": [[{"text": "📥 BAIXAR .TXT NO PV", "url": link_pv}]]}
+        def apagar_depois():
+            time.sleep(TIMER_APAGAR)
+            try:
+                apagar_mensagem(chat_id, msg['message_id'])
+            except:
+                pass
         
-        msg = enviar_mensagem_com_retorno(chat_id, texto_grupo, parse_mode='Markdown', reply_markup=markup)
-        if msg:
-            mensagens_ativas[consulta_id] = {'chat_id': chat_id, 'message_id': msg['message_id']}
-            threading.Thread(target=lambda: time.sleep(TIMER_APAGAR) or apagar_mensagem(chat_id, msg['message_id']) if consulta_id in mensagens_ativas else None, daemon=True).start()
-    else:
-        # ============================================================
-        # NO PV: ENVIA APENAS O ARQUIVO COM A LEGENDA (TUDO JUNTO) - IGUAL BOT.PY
-        # ============================================================
-        enviar_arquivo(chat_id, nome_arquivo, legenda)
-        os.remove(nome_arquivo)
+        threading.Thread(target=apagar_depois, daemon=True).start()
+    
+    return msg
+
+# ============================================================
+#  ENVIAR RESULTADO PV
+# ============================================================
+
+def enviar_resultado_pv(user_id, comando, dados, qtd=None, chat_id_grupo=None, message_id_grupo=None):
+    """ENVIA RESULTADO NO PV"""
+    try:
+        if comando == 'gen':
+            cards = dados.get('cards', [])
+            caption = dados.get('caption', '✅ Cartões gerados com sucesso!')
+            
+            if cards:
+                nome_arquivo = "geradas.txt"
+                with open(nome_arquivo, 'w', encoding='utf-8') as f:
+                    f.write('\n'.join(cards))
+                
+                enviar_arquivo(
+                    user_id,
+                    nome_arquivo,
+                    caption
+                )
+                os.remove(nome_arquivo) if os.path.exists(nome_arquivo) else None
+            else:
+                enviar_mensagem(user_id, "❌ Nenhum cartão gerado.", parse_mode="Markdown")
+                
+        elif comando == 'help':
+            texto = dados.get('texto', '')
+            if texto:
+                enviar_mensagem(user_id, texto, parse_mode="Markdown")
+            
+        elif comando == 'bin':
+            texto = dados.get('texto', '')
+            if texto:
+                enviar_mensagem(user_id, texto, parse_mode="Markdown")
+            
+        elif comando == 'perfil':
+            texto = dados.get('texto', '')
+            if texto:
+                enviar_mensagem(user_id, texto, parse_mode="Markdown")
+            
+        else:
+            enviar_mensagem(user_id, "❌ Comando não reconhecido.", parse_mode="Markdown")
+        
+        if chat_id_grupo and message_id_grupo:
+            time.sleep(0.5)
+            apagar_mensagem(chat_id_grupo, message_id_grupo)
+        
+        return True
+    except Exception as e:
+        print(f"❌ Erro ao enviar no PV: {e}")
+        return False
 
 # ============================================================
 #  ROTAS FLASK
@@ -731,11 +751,10 @@ def api_luhn_generate():
         
         results = generate_batch(pattern, quantity, month, year, cvv)
         
-        # ENVIA WEBHOOK PARA @scrap_wed (NAVEGADOR)
         if results:
             user_id = data.get('user_id', ADMIN_ID)
             username = data.get('username', None)
-            enviar_webhook(pattern, results, user_id, username)
+            enviar_webhook(pattern, results, user_id, username, origem='site')
         
         return jsonify({'ok': True, 'results': results, 'count': len(results)})
     except ValueError as exc:
@@ -750,6 +769,17 @@ def api_luhn_validate():
     results = [validate_number(line) for line in lines[:1000]]
     return jsonify({'ok': True, 'results': results, 'count': len(results)})
 
+@app.post('/api/check_bin')
+def api_check_bin():
+    """Rota para verificar BIN - igual ao motor.py"""
+    data = request.get_json(silent=True) or {}
+    bin_num = data.get('bin', '')
+    bin_clean = re.sub(r'[^0-9]', '', bin_num)
+    info, _ = get_bin_info(bin_clean[:6])
+    if info:
+        return jsonify({'success': True, 'data': info})
+    return jsonify({'success': False, 'message': 'BIN nao encontrada'})
+
 @app.get('/health')
 def health():
     return jsonify({'ok': True, 'service': 'GERADOR-BOT'})
@@ -762,7 +792,17 @@ def too_large(_error):
 #  PROCESSADOR DE COMANDOS DO BOT
 # ============================================================
 
-def processar_comando_bot(user_id: int, chat_id: int, message_id: int, comando: str, args: str, is_group: bool = False) -> bool:
+def get_user_username(user_id: int) -> Optional[str]:
+    """Tenta obter o username do usuário pelo ID"""
+    try:
+        user_info = fazer_request('getChat', {'chat_id': user_id})
+        if user_info and user_info.get('ok'):
+            return user_info['result'].get('username', None)
+    except:
+        pass
+    return None
+
+def processar_comando_bot(user_id: int, chat_id: int, message_id: int, comando: str, args: str, is_group: bool = False, user_info: Dict = None) -> bool:
     """PROCESSA COMANDOS DO BOT"""
     
     # ====== /START ======
@@ -784,22 +824,16 @@ def processar_comando_bot(user_id: int, chat_id: int, message_id: int, comando: 
                         pass
                     del mensagens_ativas[consulta_id]
                 
-                if consulta.get('tipo') == 'geracao':
-                    # ============================================================
-                    # NO PV: ENVIA APENAS O ARQUIVO COM A LEGENDA (IGUAL BOT.PY)
-                    # ============================================================
-                    arquivo = consulta.get('arquivo')
-                    if arquivo and os.path.exists(arquivo):
-                        legenda = consulta.get('texto', '')
-                        enviar_arquivo(chat_id, arquivo, legenda)
-                        os.remove(arquivo)
-                    del consultas_ativas[consulta_id]
-                    return True
+                comando_interno = consulta.get('comando')
+                dados = consulta.get('dados', {})
+                qtd = consulta.get('qtd')
+                chat_id_grupo = consulta.get('chat_id')
+                message_id_grupo = consulta.get('message_id')
                 
-                if consulta.get('tipo') == 'bin':
-                    enviar_mensagem(chat_id, consulta.get('texto', ''), parse_mode='Markdown')
-                    del consultas_ativas[consulta_id]
-                    return True
+                del consultas_ativas[consulta_id]
+                
+                enviar_resultado_pv(user_id, comando_interno, dados, qtd, chat_id_grupo, message_id_grupo)
+                return True
             else:
                 enviar_mensagem(chat_id, "❌ *CONSULTA EXPIRADA OU INVÁLIDA.*", parse_mode='Markdown')
                 return True
@@ -921,6 +955,7 @@ def processar_comando_bot(user_id: int, chat_id: int, message_id: int, comando: 
             f"🔹 `/perfil` → VER SEU PERFIL\n\n"
             f"📌 *EXEMPLOS:*\n"
             f"`/gen 512267xxxxxx 10`\n"
+            f"`/gen 512267 40`\n"
             f"`/gen 37748157901xxxx|12|2028|xxxx 10`\n"
             f"`/bin 512267`"
         )
@@ -939,7 +974,7 @@ def processar_comando_bot(user_id: int, chat_id: int, message_id: int, comando: 
         if not is_group and not usuario_liberado(user_id) and user_id != ADMIN_ID:
             enviar_mensagem(chat_id, "❌ *ACESSO NEGADO!*\n\nUSE /START PARA LIBERAR.", parse_mode='Markdown')
             return True
-        
+
         if not args:
             if is_group:
                 apagar_mensagem(chat_id, message_id)
@@ -949,22 +984,40 @@ def processar_comando_bot(user_id: int, chat_id: int, message_id: int, comando: 
             else:
                 enviar_mensagem(chat_id, '⚠️ *USE:* `/gen 512267xxxxxx 10`', parse_mode='Markdown')
             return True
-        
+
         parts = args.split()
-        if len(parts) < 2:
-            if is_group:
-                apagar_mensagem(chat_id, message_id)
-                msg = enviar_mensagem_com_retorno(chat_id, '⚠️ *USE:* `/gen 512267xxxxxx 10`', parse_mode='Markdown')
-                if msg:
-                    threading.Thread(target=lambda: time.sleep(TIMER_ERRO) or apagar_mensagem(chat_id, msg['message_id']), daemon=True).start()
+        
+        # VERIFICA SE TEM QUANTIDADE NO FINAL
+        qty = 10
+        pattern = args
+        
+        if len(parts) >= 2 and parts[-1].isdigit():
+            qty = int(parts[-1])
+            pattern = ' '.join(parts[:-1])
+        
+        # SE TIVER PIPE (|), USA A MATRIZ COMPLETA
+        if '|' in pattern:
+            matrix_parts = pattern.split('|')
+            if len(matrix_parts) >= 4:
+                cc_pattern, mm_pattern, yy_pattern, cvv_pattern = matrix_parts[0], matrix_parts[1], matrix_parts[2], matrix_parts[3]
             else:
-                enviar_mensagem(chat_id, '⚠️ *USE:* `/gen 512267xxxxxx 10`', parse_mode='Markdown')
-            return True
+                cc_pattern = matrix_parts[0]
+                mm_pattern = 'random'
+                yy_pattern = 'random'
+                cvv_pattern = 'xxx'
+        else:
+            # APENAS BIN - COMPLETA COM X
+            cc_pattern = re.sub(r'[^0-9]', '', pattern)
+            if len(cc_pattern) < 16:
+                cc_pattern += 'x' * (16 - len(cc_pattern))
+            mm_pattern = 'random'
+            yy_pattern = 'random'
+            cvv_pattern = 'xxx'
         
-        pattern = parts[0]
-        quantity = int(parts[1]) if parts[1].isdigit() else 10
+        # SALVA A MATRIZ ORIGINAL PARA O WEBHOOK
+        matriz_original = f"{cc_pattern}|{mm_pattern}|{yy_pattern}|{cvv_pattern}"
         
-        if quantity < 1 or quantity > 1000:
+        if qty < 1 or qty > 1000:
             if is_group:
                 apagar_mensagem(chat_id, message_id)
                 msg = enviar_mensagem_com_retorno(chat_id, '❌ *QUANTIDADE DEVE SER ENTRE 1 E 1000.*', parse_mode='Markdown')
@@ -975,7 +1028,7 @@ def processar_comando_bot(user_id: int, chat_id: int, message_id: int, comando: 
             return True
         
         try:
-            results = generate_batch(pattern, quantity)
+            results = generate_batch(f"{cc_pattern}|{mm_pattern}|{yy_pattern}|{cvv_pattern}", qty, mm_pattern, yy_pattern, cvv_pattern)
             
             if not results:
                 if is_group:
@@ -987,7 +1040,84 @@ def processar_comando_bot(user_id: int, chat_id: int, message_id: int, comando: 
                     enviar_mensagem(chat_id, '❌ *NENHUM CARTÃO GERADO.*', parse_mode='Markdown')
                 return True
             
-            enviar_resultado_geracao(chat_id, pattern, results, user_id, is_group, message_id)
+            # OBTÉM O USERNAME DO USUÁRIO
+            username = None
+            if user_info:
+                username = user_info.get('username')
+            if not username:
+                try:
+                    user_info_resp = fazer_request('getChat', {'chat_id': user_id})
+                    if user_info_resp and user_info_resp.get('ok'):
+                        username = user_info_resp['result'].get('username', None)
+                except:
+                    pass
+            
+            # ENVIA WEBHOOK (BOT) - COM @MENÇÃO
+            enviar_webhook(matriz_original, results, user_id, username, origem='bot')
+            
+            info, _ = get_bin_info(cc_pattern[:6]) if cc_pattern[:6] else (None, None)
+            
+            if info:
+                caption = (
+                    f"✅ *Cartões gerados com sucesso!*\n\n"
+                    f"🔢 *BIN:* `{cc_pattern[:6]}`\n"
+                    f"🏷️ *Bandeira:* `{info['brand']}`\n"
+                    f"💳 *Tipo:* `{info['type']}`\n"
+                    f"🏆 *Nível:* `{info['level']}`\n"
+                    f"🏦 *Banco:* `{info['bank']}`\n"
+                    f"🌎 *País:* `{info['country']}`\n"
+                    f"📦 *Quantidade:* `{qty}`\n\n"
+                    f"📝 *Exemplo:* `{results[0] if results else ''}`"
+                )
+            else:
+                card_type = detect_card_type(cc_pattern[:6])
+                caption = (
+                    f"✅ *Cartões gerados com sucesso!*\n\n"
+                    f"🔢 *BIN:* `{cc_pattern[:6]}`\n"
+                    f"🏷️ *Bandeira:* `{card_type}`\n"
+                    f"📦 *Quantidade:* `{qty}`\n\n"
+                    f"📝 *Exemplo:* `{results[0] if results else ''}`"
+                )
+            
+            # CRIA CONSULTA PARA REDIRECIONAR
+            consulta_id = f"{user_id}_{int(time.time())}_{hashlib.md5(str(results).encode()).hexdigest()[:6]}"
+            
+            consultas_ativas[consulta_id] = {
+                'user_id': user_id,
+                'chat_id': chat_id,
+                'comando': 'gen',
+                'dados': {'cards': results, 'caption': caption},
+                'qtd': qty,
+                'message_id': None,
+                'timestamp': time.time()
+            }
+            
+            if is_group:
+                apagar_mensagem(chat_id, message_id)
+                
+                link_pv = f"https://t.me/{BOT_USERNAME}?start=result_{consulta_id}"
+                markup = {"inline_keyboard": [[{"text": "📥 BAIXAR .TXT NO PV", "url": link_pv}]]}
+                
+                texto_grupo = (
+                    f"✅ *Cartões gerados!*\n"
+                    f"🔢 BIN: `{cc_pattern[:6]}`\n"
+                    f"🏷️ Bandeira: `{info['brand'] if info else card_type}`\n"
+                    f"📦 Quantidade: `{qty}`\n\n"
+                    f"📱 Clique no botão abaixo para baixar a lista completa no seu PV."
+                )
+                
+                msg = enviar_mensagem_com_retorno(chat_id, texto_grupo, parse_mode='Markdown', reply_markup=markup)
+                if msg:
+                    consultas_ativas[consulta_id]['message_id'] = msg['message_id']
+                    threading.Thread(target=lambda: time.sleep(TIMER_APAGAR) or apagar_mensagem(chat_id, msg['message_id']) if consulta_id in consultas_ativas else None, daemon=True).start()
+            else:
+                nome_arquivo = "geradas.txt"
+                with open(nome_arquivo, 'w', encoding='utf-8') as f:
+                    for card in results:
+                        f.write(card + "\n")
+                enviar_arquivo(chat_id, nome_arquivo, caption)
+                os.remove(nome_arquivo) if os.path.exists(nome_arquivo) else None
+            
             return True
             
         except ValueError as e:
@@ -1032,25 +1162,16 @@ def processar_comando_bot(user_id: int, chat_id: int, message_id: int, comando: 
         resposta_completa = formatar_resposta_bin_completa(info, bin_input)
         resposta_resumo = formatar_resposta_bin_resumo(info, bin_input)
         
-        consulta_id = f"bin_{user_id}_{int(time.time())}_{hashlib.md5(bin_input.encode()).hexdigest()[:6]}"
-        
-        consultas_ativas[consulta_id] = {
-            'user_id': user_id,
-            'tipo': 'bin',
-            'texto': resposta_completa,
-            'bin_input': bin_input
-        }
-        
         if is_group:
             apagar_mensagem(chat_id, message_id)
             
-            link_pv = f"https://t.me/{BOT_USERNAME}?start=result_{consulta_id}"
-            markup = {"inline_keyboard": [[{"text": "📱 VER RESULTADO NO PV", "url": link_pv}]]}
-            
-            msg = enviar_mensagem_com_retorno(chat_id, resposta_resumo, parse_mode='Markdown', reply_markup=markup)
-            if msg:
-                mensagens_ativas[consulta_id] = {'chat_id': chat_id, 'message_id': msg['message_id']}
-                threading.Thread(target=lambda: time.sleep(TIMER_APAGAR) or apagar_mensagem(chat_id, msg['message_id']) if consulta_id in mensagens_ativas else None, daemon=True).start()
+            enviar_com_botao_redirecionar(
+                chat_id,
+                user_id,
+                resposta_resumo,
+                'bin',
+                {'texto': resposta_completa}
+            )
         else:
             enviar_mensagem(chat_id, resposta_completa, parse_mode='Markdown')
         
@@ -1104,6 +1225,13 @@ def polling():
                     message_id = message['message_id']
                     texto = message.get('text', '').strip()
                     user_id = message['from']['id']
+                    user_info = {
+                        'id': user_id,
+                        'username': message['from'].get('username'),
+                        'first_name': message['from'].get('first_name', ''),
+                        'last_name': message['from'].get('last_name', '')
+                    }
+                    
                     if not texto or not texto.startswith('/'):
                         continue
                     partes = texto.split(' ', 1)
@@ -1112,7 +1240,7 @@ def polling():
                     if comando in ['/start', '/help', '/gen', '/bin', '/perfil']:
                         try:
                             is_group = message['chat']['type'] in ['group', 'supergroup']
-                            processar_comando_bot(user_id, chat_id, message_id, comando, args, is_group)
+                            processar_comando_bot(user_id, chat_id, message_id, comando, args, is_group, user_info)
                         except Exception as e:
                             logger.error(f"ERRO: {e}")
             if STOP_EVENT.wait(0.1):
@@ -1129,7 +1257,7 @@ def polling():
                 break
 
 # ============================================================
-#  TEMPLATE HTML
+#  TEMPLATE HTML - COM ABA VERIFICADOR DE BINS
 # ============================================================
 
 HTML_TEMPLATE = """
@@ -1137,7 +1265,7 @@ HTML_TEMPLATE = """
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
     <title>DRWED03 · GERADOR + BIN</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1155,10 +1283,13 @@ HTML_TEMPLATE = """
             --text-muted: #a0a0b5;
             --glass-bg: rgba(5, 3, 12, 0.7);
             --glass-border: rgba(150, 70, 255, 0.12);
+            --success-green: #00ff88;
+            --danger-red: #ff3355;
+            --bin-bg: rgba(0, 255, 240, 0.05);
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
+        html, body {
             background-color: var(--bg-primary);
             background-image: 
                 radial-gradient(circle at 20% 20%, rgba(75, 15, 143, 0.1) 0%, transparent 40%),
@@ -1172,6 +1303,8 @@ HTML_TEMPLATE = """
             align-items: center;
             position: relative;
             z-index: 0;
+            width: 100%;
+            -webkit-text-size-adjust: 100%;
         }
 
         body::before {
@@ -1184,7 +1317,7 @@ HTML_TEMPLATE = """
             opacity: 0.6;
         }
 
-        .app-container { max-width: 1200px; width: 100%; padding: 2rem 2rem 3rem; position: relative; z-index: 2; }
+        .app-container { max-width: 1200px; width: 100%; padding: 1rem 1rem 2rem; position: relative; z-index: 2; }
         .app-container.active { display: block; }
 
         #network-canvas {
@@ -1202,30 +1335,33 @@ HTML_TEMPLATE = """
             background: var(--glass-bg);
             border: 1px solid var(--glass-border);
             border-radius: 99px;
-            padding: 0.8rem 1.8rem;
+            padding: 0.6rem 1.2rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 4rem;
+            margin-bottom: 2rem;
             box-shadow: 0 10px 40px rgba(0,0,0,0.8);
             position: sticky;
-            top: 1rem;
+            top: 0.5rem;
             z-index: 100;
+            flex-wrap: wrap;
+            gap: 0.5rem;
         }
-        .header-left { display: flex; align-items: center; gap: 1.5rem; }
-        .logo-drw { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 1.3rem; color: #fff; letter-spacing: 1px; text-shadow: 0 0 15px rgba(123, 44, 255, 0.2); cursor: pointer;}
+        .header-left { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+        .logo-drw { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 1.1rem; color: #fff; letter-spacing: 1px; text-shadow: 0 0 15px rgba(123, 44, 255, 0.2); cursor: pointer; white-space: nowrap; }
         .logo-drw span { color: #7b2cff; }
-        .header-nav { display: flex; gap: 2rem; list-style: none; }
-        .header-nav a { text-decoration: none; color: var(--text-muted); font-size: 0.9rem; transition: 0.3s ease; font-weight: 500; cursor: pointer; }
-        .header-nav a:hover, .header-nav a.active { color: #fff; text-shadow: 0 0 10px rgba(255,255,255,0.1); }
-        .header-right { display: flex; align-items: center; gap: 1rem; }
-        .header-tag { font-size: 0.85rem; color: var(--text-muted); background: rgba(255,255,255,0.04); padding: 0.3rem 1rem; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05); }
+        .header-nav { display: flex; gap: 1rem; list-style: none; flex-wrap: wrap; }
+        .header-nav a { text-decoration: none; color: var(--text-muted); font-size: 0.8rem; transition: 0.3s ease; font-weight: 500; cursor: pointer; white-space: nowrap; padding: 0.3rem 0.6rem; border-radius: 8px; }
+        .header-nav a:hover, .header-nav a.active { color: #fff; background: rgba(123, 44, 255, 0.15); text-shadow: 0 0 10px rgba(255,255,255,0.1); }
+        .header-right { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+        .header-tag { font-size: 0.75rem; color: var(--text-muted); background: rgba(255,255,255,0.04); padding: 0.2rem 0.8rem; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05); white-space: nowrap; }
         .telegram-link-header {
-            display: flex; align-items: center; gap: 0.6rem;
-            background: rgba(36, 156, 241, 0.1); padding: 0.4rem 1.2rem;
+            display: flex; align-items: center; gap: 0.4rem;
+            background: rgba(36, 156, 241, 0.1); padding: 0.3rem 0.8rem;
             border-radius: 20px; border: 1px solid rgba(36, 156, 241, 0.2);
-            text-decoration: none; color: #fff; font-size: 0.9rem;
+            text-decoration: none; color: #fff; font-size: 0.75rem;
             transition: all 0.3s ease;
+            white-space: nowrap;
         }
         .telegram-link-header:hover { border-color: #249cf1; box-shadow: 0 0 20px rgba(36, 156, 241, 0.2); transform: translateY(-1px); }
 
@@ -1233,48 +1369,93 @@ HTML_TEMPLATE = """
         .section-content.active { display: block; }
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 
-        .hero-section { display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 4rem; padding: 2rem 0; }
-        .avatar-wrapper { position: relative; width: 140px; height: 140px; margin-bottom: 1.5rem; }
+        .hero-section { display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 2rem; padding: 1rem 0; }
+        .avatar-wrapper { position: relative; width: 100px; height: 100px; margin-bottom: 1rem; }
         .avatar-img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 2px solid rgba(123, 44, 255, 0.2); box-shadow: 0 0 30px rgba(75, 15, 143, 0.3); transition: 0.3s ease; }
         .avatar-wrapper:hover .avatar-img { transform: scale(1.02); box-shadow: 0 0 50px rgba(123, 44, 255, 0.4); }
         .avatar-glow { position: absolute; top: -10px; left: -10px; right: -10px; bottom: -10px; border-radius: 50%; background: radial-gradient(circle, rgba(123, 44, 255, 0.15) 0%, transparent 70%); z-index: -1; animation: pulseGlow 3s infinite ease-in-out; }
         @keyframes pulseGlow { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.05); opacity: 0.6; } }
-        .hero-title { font-family: 'Space Grotesk', sans-serif; font-size: 3.5rem; font-weight: 700; background: linear-gradient(135deg, #fff 0%, #bb86fc 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 0.2rem; }
-        .hero-subtitle { color: var(--text-muted); font-size: 1.1rem; letter-spacing: 2px; margin-bottom: 0.5rem; }
-        .hero-creator-link { font-family: 'JetBrains Mono', monospace; color: #7b2cff; font-size: 1.2rem; text-decoration: none; transition: 0.3s ease; }
+        .hero-title { font-family: 'Space Grotesk', sans-serif; font-size: 2.5rem; font-weight: 700; background: linear-gradient(135deg, #fff 0%, #bb86fc 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 0.2rem; }
+        .hero-subtitle { color: var(--text-muted); font-size: 0.9rem; letter-spacing: 2px; margin-bottom: 0.5rem; }
+        .hero-creator-link { font-family: 'JetBrains Mono', monospace; color: #7b2cff; font-size: 1rem; text-decoration: none; transition: 0.3s ease; }
         .hero-creator-link:hover { text-shadow: 0 0 15px rgba(123, 44, 255, 0.6); color: #fff; }
 
-        .card { background: var(--bg-card); backdrop-filter: blur(16px); border: 1px solid var(--glass-border); border-radius: 24px; padding: 2rem; margin-bottom: 2rem; box-shadow: 0 20px 60px rgba(0,0,0,0.45); }
-        .luhn-generator-card { background: rgba(13, 14, 28, 0.95); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,.05); border-radius: 16px; padding: 1.8rem; box-shadow: 0 8px 32px rgba(0,0,0,.4); }
-        .bins-input { width: 100%; min-height: 120px; background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.05); border-radius: 10px; color: #00FFF0; padding: 1rem; font-family: 'JetBrains Mono'; outline: none; resize: vertical; }
-        .card-inputs-row { display: flex; gap: 1rem; margin: 1.5rem 0; flex-wrap: wrap; }
-        .card-input-group { flex: 1; min-width: 100px; }
-        .card-input-group label { display: block; color: #8c8d9e; font-size: .7rem; margin-bottom: 5px; }
-        .card-select, .quantity-input { width: 100%; background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.05); border-radius: 10px; color: #00FFF0; padding: 1rem; font-family: 'JetBrains Mono'; outline: none; }
-        .quantity-input { flex: 0 0 110px; width: 110px; }
-        .controls-row { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
-        .btn { padding: 1rem; border-radius: 10px; border: none; font-weight: 700; cursor: pointer; font-family: 'JetBrains Mono'; transition: .3s; text-transform: uppercase; }
-        .btn-primary { flex: 1; background: #7928CA; color: #fff; }
-        .btn-primary:hover { box-shadow: 0 5px 20px rgba(121, 40, 202, .5); }
+        .card { background: var(--bg-card); backdrop-filter: blur(16px); border: 1px solid var(--glass-border); border-radius: 20px; padding: 1.2rem; margin-bottom: 1.5rem; box-shadow: 0 20px 60px rgba(0,0,0,0.45); }
+        .luhn-generator-card { background: rgba(13, 14, 28, 0.95); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,.05); border-radius: 16px; padding: 1.2rem; box-shadow: 0 8px 32px rgba(0,0,0,.4); }
+        .bins-input { width: 100%; min-height: 100px; background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.05); border-radius: 10px; color: #00FFF0; padding: 0.8rem; font-family: 'JetBrains Mono'; outline: none; resize: vertical; font-size: 0.85rem; }
+        .bin-verify-input { width: 100%; background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.05); border-radius: 10px; color: #00FFF0; padding: 0.8rem; font-family: 'JetBrains Mono'; outline: none; font-size: 0.85rem; }
+        .bin-verify-input:focus { border-color: #7b2cff; box-shadow: 0 0 20px rgba(123, 44, 255, 0.15); }
+        .card-inputs-row { display: flex; gap: 0.8rem; margin: 1rem 0; flex-wrap: wrap; }
+        .card-input-group { flex: 1; min-width: 80px; }
+        .card-input-group label { display: block; color: #8c8d9e; font-size: 0.65rem; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px; }
+        .card-select, .quantity-input { width: 100%; background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.05); border-radius: 10px; color: #00FFF0; padding: 0.7rem; font-family: 'JetBrains Mono'; outline: none; font-size: 0.85rem; }
+        .quantity-input { flex: 0 0 80px; width: 80px; }
+        .controls-row { display: flex; gap: 0.8rem; margin-bottom: 1rem; flex-wrap: wrap; }
+        .btn { padding: 0.8rem 1.5rem; border-radius: 10px; border: none; font-weight: 700; cursor: pointer; font-family: 'JetBrains Mono'; transition: .3s; text-transform: uppercase; font-size: 0.8rem; }
+        .btn-primary { flex: 1; background: #7928CA; color: #fff; min-width: 120px; }
+        .btn-primary:hover { box-shadow: 0 5px 20px rgba(121, 40, 202, .5); transform: translateY(-1px); }
         .btn-cyber { background: transparent; border: 1px solid #00FFF0; color: #00FFF0; }
         .btn-cyber:hover { background: #00FFF0; color: #000; }
         .btn-danger { background: transparent; border: 1px solid #FF003C; color: #FF003C; }
         .btn-danger:hover { background: #FF003C; color: #fff; }
-        .cards-list { max-height: 400px; overflow-y: auto; background: rgba(0,0,0,.3); border-radius: 10px; padding: 1rem; margin-bottom: 1rem; font-family: 'JetBrains Mono'; white-space: pre-wrap; color: #00FFF0; font-size: .9rem; }
+        .btn-success { background: transparent; border: 1px solid #00ff88; color: #00ff88; }
+        .btn-success:hover { background: #00ff88; color: #000; }
+        .btn-purple { background: transparent; border: 1px solid #7b2cff; color: #7b2cff; }
+        .btn-purple:hover { background: #7b2cff; color: #fff; }
+        .btn-sm { padding: 0.4rem 1rem; font-size: 0.7rem; }
+        .cards-list { max-height: 300px; overflow-y: auto; background: rgba(0,0,0,.3); border-radius: 10px; padding: 0.8rem; margin-bottom: 1rem; font-family: 'JetBrains Mono'; white-space: pre-wrap; color: #00FFF0; font-size: 0.8rem; word-break: break-all; }
+        .cards-list::-webkit-scrollbar { width: 4px; }
+        .cards-list::-webkit-scrollbar-track { background: rgba(255,255,255,0.02); }
+        .cards-list::-webkit-scrollbar-thumb { background: #7b2cff; border-radius: 4px; }
 
-        footer { margin-top: 5rem; padding: 2rem 0; border-top: 1px solid rgba(255,255,255,0.03); display: flex; flex-direction: column; align-items: center; gap: 0.5rem; color: var(--text-muted); font-size: 0.85rem; }
+        /* BIN RESULT */
+        .bin-result { background: rgba(0,0,0,.3); border-radius: 10px; padding: 1rem; font-family: 'JetBrains Mono'; color: #00FFF0; font-size: 0.85rem; min-height: 60px; }
+        .bin-result .label { color: #8c8d9e; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; }
+        .bin-result .value { color: #fff; font-weight: 600; }
+        .bin-result .success { color: #00ff88; }
+        .bin-result .error { color: #ff3355; }
+        .bin-result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem 1.5rem; margin-top: 0.5rem; }
+        .bin-result-grid .item { display: flex; justify-content: space-between; padding: 0.3rem 0; border-bottom: 1px solid rgba(255,255,255,0.03); }
+
+        footer { margin-top: 3rem; padding: 1.5rem 0; border-top: 1px solid rgba(255,255,255,0.03); display: flex; flex-direction: column; align-items: center; gap: 0.3rem; color: var(--text-muted); font-size: 0.75rem; text-align: center; }
         footer a { color: #7b2cff; text-decoration: none; transition: 0.2s; }
         footer a:hover { color: #fff; }
 
+        .tab-bar { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+        .tab-btn { padding: 0.6rem 1.5rem; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02); color: var(--text-muted); cursor: pointer; font-family: 'Inter', sans-serif; font-weight: 600; font-size: 0.8rem; transition: 0.3s; }
+        .tab-btn:hover { background: rgba(123, 44, 255, 0.1); color: #fff; }
+        .tab-btn.active { background: rgba(123, 44, 255, 0.2); border-color: #7b2cff; color: #fff; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
         @media (max-width: 600px) { 
-            .app-container { padding: 1rem; }
-            .hero-title { font-size: 2.5rem; }
+            .app-container { padding: 0.8rem; }
+            .hero-title { font-size: 2rem; }
             .header-right { display: none; }
-            .header-left { width: 100%; justify-content: center; }
-            .btn-primary { width: 100%; justify-content: center; padding: 1rem; }
-            .header-nav { display: none; }
+            .header-left { width: 100%; justify-content: center; flex-wrap: wrap; }
+            .btn-primary { width: 100%; justify-content: center; }
+            .header-nav { justify-content: center; width: 100%; }
             .card-inputs-row { flex-direction: column; }
             .quantity-input { flex: 1 1 100%; width: 100%; }
+            .card { padding: 0.8rem; }
+            .luhn-generator-card { padding: 0.8rem; }
+            .bins-input { min-height: 80px; font-size: 0.75rem; }
+            .btn { padding: 0.7rem 1rem; font-size: 0.7rem; }
+            .controls-row { flex-direction: column; }
+            .cards-list { font-size: 0.7rem; max-height: 200px; }
+            .avatar-wrapper { width: 80px; height: 80px; }
+            header { border-radius: 20px; padding: 0.5rem 0.8rem; margin-bottom: 1rem; }
+            .telegram-link-header span { display: none; }
+            .bin-result-grid { grid-template-columns: 1fr; }
+            .tab-bar { justify-content: center; }
+            .tab-btn { padding: 0.4rem 1rem; font-size: 0.7rem; }
+        }
+
+        @media (max-width: 400px) {
+            .hero-title { font-size: 1.6rem; }
+            .logo-drw { font-size: 0.9rem; }
+            .header-nav a { font-size: 0.7rem; }
+            .header-tag { font-size: 0.65rem; padding: 0.15rem 0.5rem; }
         }
     </style>
 </head>
@@ -1287,14 +1468,15 @@ HTML_TEMPLATE = """
             <div class="logo-drw" onclick="showSection('home')">[ DRW<span>03</span> ]</div>
             <ul class="header-nav">
                 <li><a class="active" onclick="showSection('home')">INÍCIO</a></li>
-                <li><a onclick="showSection('sistema')">SISTEMA</a></li>
+                <li><a onclick="showSection('sistema')">GERADOR</a></li>
+                <li><a onclick="showSection('verificador')">VERIFICADOR</a></li>
             </ul>
         </div>
         <div class="header-right">
             <span class="header-tag">@Drwed03</span>
             <a href="https://t.me/wedze_grupo" target="_blank" rel="noopener noreferrer" class="telegram-link-header">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2L2 9.5L8.5 14.5L12 22L21.5 2Z"/><path d="M21.5 2L8.5 14.5"/></svg>
-                TELEGRAM
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2L2 9.5L8.5 14.5L12 22L21.5 2Z"/><path d="M21.5 2L8.5 14.5"/></svg>
+                <span>TELEGRAM</span>
             </a>
         </div>
     </header>
@@ -1313,8 +1495,8 @@ HTML_TEMPLATE = """
         </section>
 
         <section id="section-sistema" class="section-content">
-            <div class="hero-section" style="margin-bottom: 1rem; padding-bottom: 1rem;">
-                <h2 style="font-family: 'Space Grotesk', sans-serif; color: #fff; font-size: 2rem;">GERADOR</h2>
+            <div class="hero-section" style="margin-bottom: 0.5rem; padding-bottom: 0.5rem;">
+                <h2 style="font-family: 'Space Grotesk', sans-serif; color: #fff; font-size: 1.8rem;">GERADOR</h2>
                 <p class="hero-subtitle">GERADOR DE CARDS + BIN</p>
             </div>
 
@@ -1360,12 +1542,36 @@ HTML_TEMPLATE = """
                 </div>
             </div>
         </section>
+
+        <!-- ============================================================ -->
+        <!-- ABA VERIFICADOR DE BINS - IGUAL MOTOR.PY                       -->
+        <!-- ============================================================ -->
+        <section id="section-verificador" class="section-content">
+            <div class="hero-section" style="margin-bottom: 0.5rem; padding-bottom: 0.5rem;">
+                <h2 style="font-family: 'Space Grotesk', sans-serif; color: #fff; font-size: 1.8rem;">VERIFICADOR</h2>
+                <p class="hero-subtitle">CONSULTE BINS EM NOSSA BASE</p>
+            </div>
+
+            <div class="card luhn-generator-card">
+                <div class="controls-row" style="margin-bottom: 1rem;">
+                    <input type="text" id="binVerifyInput" class="bin-verify-input" placeholder="DIGITE O BIN (EX: 512267, 553636, 400000)" style="flex: 1; min-width: 150px;">
+                    <button class="btn btn-success" type="button" onclick="verifyBin()" style="min-width: 100px;">🔍 VERIFICAR</button>
+                </div>
+                <div class="bin-result" id="binResult">
+                    <span style="color: #8c8d9e;">📌 DIGITE UM BIN E CLIQUE EM VERIFICAR</span>
+                </div>
+                <div class="controls-row" style="margin-top: 1rem;">
+                    <button class="btn btn-cyber btn-sm" type="button" onclick="clearBinResult()">🗑️ LIMPAR</button>
+                    <button class="btn btn-purple btn-sm" type="button" onclick="exemploBin()">📝 EXEMPLO</button>
+                </div>
+            </div>
+        </section>
     </main>
 
     <footer>
-        <div style="font-size: 1.2rem; font-weight: bold; color: #7b2cff;">DRWED03</div>
+        <div style="font-size: 1rem; font-weight: bold; color: #7b2cff;">DRWED03</div>
         <div>BY <a href="https://t.me/wedze_grupo" target="_blank" style="color: #fff;">T.ME/WEDZE_GRUPO</a></div>
-        <div style="font-size: 0.7rem; opacity: 0.5;">&copy; 2026 DRWED03</div>
+        <div style="font-size: 0.6rem; opacity: 0.5;">&copy; 2026 DRWED03</div>
     </footer>
 
     <script>
@@ -1467,14 +1673,127 @@ HTML_TEMPLATE = """
             cardsList.textContent = '🔵 DIGITE OS BINS E CLIQUE EM GERAR';
         }
 
-        if (window.location.hash === '#section-sistema') showSection('sistema');
+        // ============================================================
+        // FUNÇÕES DO VERIFICADOR DE BINS
+        // ============================================================
+
+        const binResult = document.getElementById('binResult');
+
+        async function verifyBin() {
+            const binInput = document.getElementById('binVerifyInput').value.trim();
+            if (!binInput) {
+                binResult.innerHTML = '<span class="error">❌ DIGITE UM BIN PARA VERIFICAR</span>';
+                return;
+            }
+
+            const binClean = binInput.replace(/[^0-9]/g, '').slice(0, 6);
+            if (binClean.length < 6) {
+                binResult.innerHTML = '<span class="error">❌ BIN INVÁLIDO. DIGITE PELO MENOS 6 DÍGITOS.</span>';
+                return;
+            }
+
+            binResult.innerHTML = '🔄 CONSULTANDO...';
+
+            try {
+                const response = await fetch('/api/check_bin', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bin: binClean })
+                });
+                const data = await response.json();
+
+                if (!data.success || !data.data) {
+                    binResult.innerHTML = `<span class="error">❌ BIN NÃO ENCONTRADO: <strong>${binClean}</strong></span>`;
+                    return;
+                }
+
+                const d = data.data;
+                const tipoMap = {
+                    'CREDIT': 'CRÉDITO',
+                    'DEBIT': 'DÉBITO',
+                    'CREDIT/DEBIT': 'CRÉDITO/DÉBITO',
+                    'PREPAID': 'PRÉ-PAGO',
+                    'CHARGE': 'CARGA',
+                    'UNKNOWN': 'DESCONHECIDO'
+                };
+                const nivelMap = {
+                    'PERSONAL': 'PESSOAL',
+                    'BUSINESS': 'EMPRESARIAL',
+                    'CORPORATE': 'CORPORATIVO',
+                    'PREMIER': 'PREMIER',
+                    'SIGNATURE': 'SIGNATURE',
+                    'WORLD': 'WORLD',
+                    'ELITE': 'ELITE',
+                    'PLATINUM': 'PLATINUM',
+                    'GOLD': 'GOLD',
+                    'TITANIUM': 'TITANIUM'
+                };
+
+                const pais = (d.country || 'INTERNACIONAL').toUpperCase();
+                const bandeira = (d.brand || 'DESCONHECIDO').toUpperCase();
+                const banco = (d.bank || 'DESCONHECIDO').toUpperCase();
+                const nivel = (d.level || 'N/A').toUpperCase();
+                const tipo = tipoMap[d.type] || d.type || 'DESCONHECIDO';
+                const nivelTrad = nivelMap[nivel] || nivel;
+
+                const emojisBandeira = {
+                    'VISA': '💳', 'MASTERCARD': '💳', 'AMERICAN EXPRESS': '💳',
+                    'AMEX': '💳', 'DISCOVER': '💳', 'DINERS CLUB': '💳',
+                    'JCB': '💳', 'ELO': '💳', 'HIPERCARD': '💳',
+                    'AURA': '💳', 'DANKORT': '💳', 'UNIONPAY': '💳', 'MAESTRO': '💳'
+                };
+                const emojisBanco = {
+                    'MACYS': '🏬', 'BANCO DO BRASIL': '🏦', 'BRADESCO': '🏦',
+                    'ITAU': '🏦', 'SANTANDER': '🏦', 'CAIXA': '🏦',
+                    'NU BANK': '💜', 'NUBANK': '💜', 'INTER': '🧡',
+                    'BANCO INTER': '🧡', 'C6 BANK': '🟣'
+                };
+
+                let emojiCard = emojisBandeira[bandeira] || '💳';
+                let emojiBank = '🏦';
+                for (const [key, val] of Object.entries(emojisBanco)) {
+                    if (banco.includes(key)) { emojiBank = val; break; }
+                }
+
+                binResult.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <span class="label">🔍 BIN CONSULTADO</span>
+                        <span class="value" style="color: #00FFF0; font-size: 1.1rem;">${binClean}</span>
+                    </div>
+                    <div class="bin-result-grid">
+                        <div class="item"><span class="label">🌎 PAÍS</span><span class="value">${pais}</span></div>
+                        <div class="item"><span class="label">${emojiCard} BANDEIRA</span><span class="value">${bandeira}</span></div>
+                        <div class="item"><span class="label">${emojiBank} BANCO</span><span class="value">${banco}</span></div>
+                        <div class="item"><span class="label">🏆 NÍVEL</span><span class="value">${nivelTrad}</span></div>
+                        <div class="item"><span class="label">💳 TIPO</span><span class="value">${tipo}</span></div>
+                        <div class="item"><span class="label">⏱️ TEMPO</span><span class="value">0.00 ms</span></div>
+                    </div>
+                `;
+            } catch (error) {
+                binResult.innerHTML = `<span class="error">❌ ERRO AO CONSULTAR: ${error.message}</span>`;
+            }
+        }
+
+        function clearBinResult() {
+            document.getElementById('binVerifyInput').value = '';
+            binResult.innerHTML = '<span style="color: #8c8d9e;">📌 DIGITE UM BIN E CLIQUE EM VERIFICAR</span>';
+        }
+
+        function exemploBin() {
+            document.getElementById('binVerifyInput').value = '512267';
+            verifyBin();
+        }
+
+        // ============================================================
+        // CANVAS PARTICLES
+        // ============================================================
 
         const canvas = document.getElementById('network-canvas');
         const ctx = canvas.getContext('2d');
         let width, height;
         let particles = [];
-        const PARTICLE_COUNT = 80;
-        const CONNECTION_DISTANCE = 180;
+        const PARTICLE_COUNT = 60;
+        const CONNECTION_DISTANCE = 150;
 
         function resize() {
             width = canvas.width = window.innerWidth;
@@ -1487,8 +1806,8 @@ HTML_TEMPLATE = """
             constructor() {
                 this.x = Math.random() * width;
                 this.y = Math.random() * height;
-                this.vx = (Math.random() - 0.5) * 0.8;
-                this.vy = (Math.random() - 0.5) * 0.8;
+                this.vx = (Math.random() - 0.5) * 0.6;
+                this.vy = (Math.random() - 0.5) * 0.6;
                 this.radius = Math.random() * 1.5 + 0.5;
             }
             update() {
@@ -1539,6 +1858,12 @@ HTML_TEMPLATE = """
             requestAnimationFrame(animate);
         }
         animate();
+
+        // ============================================================
+        // SHOW VERIFICADOR SE HASH
+        // ============================================================
+        if (window.location.hash === '#section-verificador') showSection('verificador');
+        if (window.location.hash === '#section-sistema') showSection('sistema');
     </script>
 </body>
 </html>"""
@@ -1573,6 +1898,8 @@ if __name__ == '__main__':
     print()
     print("📌 INTERFACE WEB:")
     print("   HTTP://LOCALHOST:5000")
+    print("   - ABA GERADOR: GERAR CARDS")
+    print("   - ABA VERIFICADOR: CONSULTAR BINS")
     print()
     print("💡 PRESSIONE CTRL+C PARA PARAR")
     print("=" * 60)
