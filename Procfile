@@ -1,1 +1,1 @@
-web: python gerador.py
+web: gunicorn gerador:app
