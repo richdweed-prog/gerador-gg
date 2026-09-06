@@ -1304,7 +1304,7 @@ def polling():
                 break
 
 # ============================================================
-#  TEMPLATE HTML COMPLETO COM IMAGEM VAZIA
+#  TEMPLATE HTML COMPLETO
 # ============================================================
 
 HTML_TEMPLATE = """
