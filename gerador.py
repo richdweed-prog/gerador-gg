@@ -780,6 +780,16 @@ def enviar_resultado_pv(user_id, comando, dados, qtd=None, chat_id_grupo=None, m
         return False
 
 # ============================================================
+#  INICIALIZAÇÃO DA APLICAÇÃO
+# ============================================================
+
+# O Render inicia esta aplicação com Gunicorn (gerador:app), que importa
+# este módulo sem executar o bloco `if __name__ == '__main__'`. Portanto,
+# o banco e o CSV precisam ser inicializados durante a importação.
+init_db()
+load_bins_from_csv()
+
+# ============================================================
 #  ROTAS FLASK
 # ============================================================
 
@@ -1887,9 +1897,6 @@ HTML_TEMPLATE = """
 # ============================================================
 
 def main():
-    init_db()
-    load_bins_from_csv()
-    
     print("=" * 60)
     print("  GERADOR + BOT BIN + WEBHOOK - DRWED03")
     print("=" * 60)
