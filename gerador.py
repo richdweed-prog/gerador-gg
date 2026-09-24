@@ -44,6 +44,8 @@ app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024
 
 RUNNING = True
 STOP_EVENT = threading.Event()
+POLLING_THREAD = None
+POLLING_LOCK = threading.Lock()
 
 # ============================================================
 #  SIGNAL HANDLER
@@ -1366,6 +1368,28 @@ def polling():
             if STOP_EVENT.wait(min(5, erros * 2)):
                 break
 
+
+def iniciar_polling():
+    """Inicia o consumidor do Telegram uma única vez por processo.
+
+    O Render carrega este módulo através do Gunicorn, sem executar o bloco
+    ``if __name__ == '__main__'``. Por isso o polling precisa ser iniciado
+    durante a importação da aplicação, mas protegido contra threads duplicadas.
+    """
+    global POLLING_THREAD
+    with POLLING_LOCK:
+        if POLLING_THREAD and POLLING_THREAD.is_alive():
+            return POLLING_THREAD
+        POLLING_THREAD = threading.Thread(
+            target=polling,
+            name='telegram-polling',
+            daemon=True,
+        )
+        POLLING_THREAD.start()
+        return POLLING_THREAD
+
+iniciar_polling()
+
 # ============================================================
 #  TEMPLATE HTML COMPLETO
 # ============================================================
@@ -1914,7 +1938,7 @@ def main():
     print(f"  PORT:        {PORT}")
     print("=" * 60)
     
-    threading.Thread(target=polling, daemon=True).start()
+    iniciar_polling()
     
     try:
         app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
