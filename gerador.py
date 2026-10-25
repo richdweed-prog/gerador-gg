@@ -1589,6 +1589,8 @@ HTML_TEMPLATE = """
         .bin-result-list .item { padding: 0.2rem 0; border-bottom: 1px solid rgba(255,255,255,0.03); font-size: 0.7rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }
         .bin-result-list .item .bin-code { color: #00FFF0; font-weight: 600; min-width: 60px; }
         .bin-result-list .item .bin-info { color: #8c8d9e; }
+        .bin-copy-actions { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
+        .bin-copy-actions .btn { flex: 1; }
         .bin-count { color: #8c8d9e; font-size: 0.7rem; margin-bottom: 0.3rem; }
 
         footer { margin-top: 2rem; padding: 1rem 0; border-top: 1px solid rgba(255,255,255,0.03); display: flex; flex-direction: column; align-items: center; gap: 0.2rem; color: var(--text-muted); font-size: 0.7rem; text-align: center; }
@@ -1718,6 +1720,9 @@ HTML_TEMPLATE = """
                     <input type="text" class="bin-verify-input" id="binInput" placeholder="DIGITE A BIN (6 DÍGITOS)">
                     <button class="btn btn-primary" style="margin-top:0.5rem;width:100%;" onclick="verificarBin()">VERIFICAR</button>
                     <div class="bin-result" id="binResult">AGUARDANDO...</div>
+                    <div class="bin-copy-actions">
+                        <button class="btn btn-cyber btn-sm" id="copyVerifiedBin" onclick="copiarBinVerificada()" disabled>COPIAR BIN VERIFICADA</button>
+                    </div>
                 </div>
                 <div class="bin-tab-content" id="tab-search">
                     <div class="bin-search-row">
@@ -1732,6 +1737,9 @@ HTML_TEMPLATE = """
                         <button class="btn btn-cyber btn-sm" onclick="buscarBins()">BUSCAR</button>
                     </div>
                     <div class="bin-result" id="searchResult">AGUARDANDO...</div>
+                    <div class="bin-copy-actions">
+                        <button class="btn btn-cyber btn-sm" id="copySearchedBins" onclick="copiarBinsPesquisadas()" disabled>COPIAR PESQUISA COMPLETA</button>
+                    </div>
                 </div>
             </div>
         </section>
@@ -1818,6 +1826,39 @@ HTML_TEMPLATE = """
 
         document.addEventListener('DOMContentLoaded', carregarFiltrosBins);
 
+        let binVerificadaAtual = '';
+        let binsPesquisadasAtuais = [];
+
+        async function copiarTexto(texto, botao) {
+            if (!texto) return;
+            try {
+                await navigator.clipboard.writeText(texto);
+            } catch (error) {
+                const area = document.createElement('textarea');
+                area.value = texto;
+                area.style.position = 'fixed';
+                area.style.opacity = '0';
+                document.body.appendChild(area);
+                area.focus();
+                area.select();
+                document.execCommand('copy');
+                area.remove();
+            }
+            if (botao) {
+                const textoOriginal = botao.textContent;
+                botao.textContent = 'COPIADO!';
+                setTimeout(() => { botao.textContent = textoOriginal; }, 1400);
+            }
+        }
+
+        function copiarBinVerificada() {
+            copiarTexto(binVerificadaAtual, document.getElementById('copyVerifiedBin'));
+        }
+
+        function copiarBinsPesquisadas() {
+            copiarTexto(binsPesquisadasAtuais.join('\n'), document.getElementById('copySearchedBins'));
+        }
+
         async function gerarCartoes() {
             const pattern = document.getElementById('binsPattern').value.trim();
             if (!pattern) { alert('DIGITE UM BIN OU PADRÃO'); return; }
@@ -1878,6 +1919,8 @@ HTML_TEMPLATE = """
                 const data = await resp.json();
                 if (data.success) {
                     const d = data.data;
+                    binVerificadaAtual = String(bin).replace(/\D/g, '').slice(0, 6);
+                    document.getElementById('copyVerifiedBin').disabled = !binVerificadaAtual;
                     res.innerHTML = `
                         <div class="label">BIN</div><div class="value">${bin}</div>
                         <div class="bin-result-grid">
@@ -1916,9 +1959,20 @@ HTML_TEMPLATE = """
                 const data = await resp.json();
                 if (data.success) {
                     if (!data.results.length) {
+                        binsPesquisadasAtuais = [];
+                        document.getElementById('copySearchedBins').disabled = true;
                         res.innerHTML = '<div class="error">NENHUM RESULTADO</div>';
                         return;
                     }
+                    binsPesquisadasAtuais = data.results.map(item => [
+                        `BIN: ${item.bin || '-'}`,
+                        `BANDEIRA: ${item.brand || '-'}`,
+                        `BANCO: ${item.bank || '-'}`,
+                        `PAÍS: ${item.country || '-'}`,
+                        `TIPO: ${item.type || '-'}`,
+                        `NÍVEL: ${item.level || '-'}`
+                    ].join(' | '));
+                    document.getElementById('copySearchedBins').disabled = false;
                     let html = `<div class="bin-count">${data.results.length} RESULTADO(S)</div><div class="bin-result-list">`;
                     for (const r of data.results) {
                         html += `<div class="item"><span class="bin-code">${r.bin}</span><span class="bin-info">${r.brand} · ${r.bank} · ${r.country}</span></div>`;
