@@ -218,28 +218,39 @@ BINS_CSV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bins.c
 
 def load_bins_from_csv():
     global BINS_DATA
+    loaded = {}
     if not os.path.exists(BINS_CSV_PATH):
         print(f"⚠️ BINS.CSV NÃO ENCONTRADO EM: {BINS_CSV_PATH}")
+        BINS_DATA = {}
         return
     try:
-        with open(BINS_CSV_PATH, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
+        with open(BINS_CSV_PATH, 'r', encoding='utf-8-sig', newline='') as f:
+            reader = csv.DictReader(f, skipinitialspace=True)
+            if not reader.fieldnames:
+                raise ValueError('O arquivo está sem cabeçalho.')
+            reader.fieldnames = [(name or '').strip().lower().replace('\ufeff', '') for name in reader.fieldnames]
+            required = {'bin', 'brand', 'type', 'level', 'bank', 'country'}
+            missing = required.difference(reader.fieldnames)
+            if missing:
+                raise ValueError(f"Colunas ausentes: {', '.join(sorted(missing))}")
             for row in reader:
-                bin_code = row.get('bin', '').strip()[:6]
+                bin_code = re.sub(r'\D', '', str(row.get('bin', '') or ''))[:6]
                 if bin_code.isdigit():
-                    BINS_DATA[bin_code] = {
-                        'brand': row.get('brand', '').strip().upper(),
-                        'type': row.get('type', '').strip().upper(),
-                        'level': row.get('level', '').strip().upper(),
-                        'bank': row.get('bank', '').strip(),
-                        'country': row.get('country', '').strip()
+                    loaded[bin_code] = {
+                        'brand': str(row.get('brand', '') or '').strip().upper(),
+                        'type': str(row.get('type', '') or '').strip().upper(),
+                        'level': str(row.get('level', '') or '').strip().upper(),
+                        'bank': str(row.get('bank', '') or '').strip(),
+                        'country': str(row.get('country', '') or '').strip().upper()
                     }
+        BINS_DATA = loaded
         print(f"✅ {len(BINS_DATA)} BINS CARREGADOS")
     except Exception as e:
+        BINS_DATA = {}
         print(f"❌ ERRO AO CARREGAR BINS.CSV: {e}")
 
 def get_bin_info(bin_prefix):
-    bin_prefix = str(bin_prefix).strip()[:6]
+    bin_prefix = re.sub(r'\D', '', str(bin_prefix or ''))[:6]
     if bin_prefix in BINS_DATA:
         return BINS_DATA[bin_prefix].copy(), None
     return {'brand': 'DESCONHECIDO', 'type': 'DESCONHECIDO', 'level': '', 'bank': 'DESCONHECIDO', 'country': 'INTERNACIONAL'}, None
@@ -839,7 +850,8 @@ def api_luhn_validate():
 
 @app.route('/api/check_bin', methods=['POST'])
 def check_bin():
-    bin_num = request.json.get('bin', '')
+    payload = request.get_json(silent=True) or {}
+    bin_num = payload.get('bin', '')
     bin_clean = re.sub(r'[^0-9]', '', bin_num)
     info, _ = get_bin_info(bin_clean[:6])
     if info:
@@ -848,7 +860,7 @@ def check_bin():
 
 @app.route('/api/search_bins', methods=['POST'])
 def search_bins():
-    filters = request.json
+    filters = request.get_json(silent=True) or {}
     brand = filters.get('brand', '').strip().upper()
     country = filters.get('country', '').strip().upper()
     bank = filters.get('bank', '').strip().upper()
@@ -902,6 +914,10 @@ def types():
 def levels():
     levels = sorted(set(info.get('level', '') for info in BINS_DATA.values() if info.get('level')))
     return jsonify({'success': True, 'levels': levels})
+
+@app.get('/api/bin_stats')
+def bin_stats():
+    return jsonify({'success': True, 'count': len(BINS_DATA), 'source': os.path.basename(BINS_CSV_PATH)})
 
 @app.get('/health')
 def health():
@@ -1753,6 +1769,54 @@ HTML_TEMPLATE = """
             document.getElementById('tab-' + tab).classList.add('active');
             if (ev && ev.target) ev.target.classList.add('active');
         }
+
+        function preencherSelect(id, values, placeholder) {
+            const select = document.getElementById(id);
+            if (!select) return;
+            select.innerHTML = '';
+            const first = document.createElement('option');
+            first.value = '';
+            first.textContent = placeholder;
+            select.appendChild(first);
+            (values || []).forEach(value => {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = value;
+                select.appendChild(option);
+            });
+        }
+
+        async function carregarFiltrosBins() {
+            const searchResult = document.getElementById('searchResult');
+            try {
+                const endpoints = [
+                    ['/api/brands', 'brands', 'BANDEIRA'],
+                    ['/api/countries', 'countries', 'PAÍS'],
+                    ['/api/types', 'types', 'TIPO'],
+                    ['/api/levels', 'levels', 'NÍVEL']
+                ];
+                const responses = await Promise.all(endpoints.map(item => fetch(item[0])));
+                if (responses.some(response => !response.ok)) throw new Error('Falha ao carregar filtros');
+                const payloads = await Promise.all(responses.map(response => response.json()));
+                payloads.forEach((payload, index) => {
+                    preencherSelect(endpoints[index][1] === 'brands' ? 'searchBrand' :
+                        endpoints[index][1] === 'countries' ? 'searchCountry' :
+                        endpoints[index][1] === 'types' ? 'searchType' : 'searchLevel',
+                        payload[endpoints[index][1]], endpoints[index][2]);
+                });
+                const stats = await fetch('/api/bin_stats').then(response => response.json());
+                if (stats.success && stats.count) {
+                    searchResult.textContent = `${stats.count.toLocaleString('pt-BR')} BINS CARREGADOS — SELECIONE OS FILTROS E BUSQUE.`;
+                } else {
+                    searchResult.textContent = 'NENHUM BIN CARREGADO.';
+                }
+            } catch (error) {
+                searchResult.textContent = 'ERRO AO CARREGAR AS OPÇÕES DO BINS.CSV. TENTE ATUALIZAR A PÁGINA.';
+                console.error(error);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', carregarFiltrosBins);
 
         async function gerarCartoes() {
             const pattern = document.getElementById('binsPattern').value.trim();
