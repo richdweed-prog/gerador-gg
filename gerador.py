@@ -1857,7 +1857,7 @@ HTML_TEMPLATE = """
         }
 
         function copiarBinsPesquisadas() {
-            copiarTexto(binsPesquisadasAtuais.join('\n'), document.getElementById('copySearchedBins'));
+            copiarTexto(binsPesquisadasAtuais.join('\\n'), document.getElementById('copySearchedBins'));
         }
 
         async function gerarCartoes() {
