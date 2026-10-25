@@ -1713,8 +1713,8 @@ HTML_TEMPLATE = """
         <section id="section-verificador" class="section-content">
             <div class="card card-dark">
                 <div class="bin-tabs">
-                    <button class="bin-tab-btn active" onclick="switchTab('verify', event)">VERIFICAR BIN</button>
-                    <button class="bin-tab-btn" onclick="switchTab('search', event)">BUSCAR BINS</button>
+                    <button type="button" class="bin-tab-btn active" onclick="switchTab('verify', this)">VERIFICAR BIN</button>
+                    <button type="button" class="bin-tab-btn" onclick="switchTab('search', this)">BUSCAR BINS</button>
                 </div>
                 <div class="bin-tab-content active" id="tab-verify">
                     <input type="text" class="bin-verify-input" id="binInput" placeholder="DIGITE A BIN (6 DÍGITOS)">
@@ -1771,11 +1771,12 @@ HTML_TEMPLATE = """
             if (ev && ev.target) ev.target.classList.add('active');
         }
 
-        function switchTab(tab, ev) {
+        function switchTab(tab, button) {
             document.querySelectorAll('.bin-tab-content').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.bin-tab-btn').forEach(b => b.classList.remove('active'));
-            document.getElementById('tab-' + tab).classList.add('active');
-            if (ev && ev.target) ev.target.classList.add('active');
+            const selectedTab = document.getElementById('tab-' + tab);
+            if (selectedTab) selectedTab.classList.add('active');
+            if (button) button.classList.add('active');
         }
 
         function preencherSelect(id, values, placeholder) {
