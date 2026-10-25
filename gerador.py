@@ -1629,9 +1629,9 @@ HTML_TEMPLATE = """
         <div class="header-left">
             <div class="logo-drw" onclick="showSection('home')">[ DRW<span>03</span> ]</div>
             <ul class="header-nav">
-                <li><a class="active" onclick="showSection('home', event)">INÍCIO</a></li>
-                <li><a onclick="showSection('sistema', event)">GERADOR</a></li>
-                <li><a onclick="showSection('verificador', event)">VERIFICADOR</a></li>
+                <li><a href="#section-home" class="active" onclick="showSection('home', this); return false;">INÍCIO</a></li>
+                <li><a href="#section-sistema" onclick="showSection('sistema', this); return false;">GERADOR</a></li>
+                <li><a href="#section-verificador" onclick="showSection('verificador', this); return false;">VERIFICADOR</a></li>
             </ul>
         </div>
         <div class="header-right">
@@ -1763,12 +1763,12 @@ HTML_TEMPLATE = """
             }
         })();
 
-        function showSection(id, ev) {
+        function showSection(id, link) {
             document.querySelectorAll('.section-content').forEach(s => s.classList.remove('active'));
             document.querySelectorAll('.header-nav a').forEach(a => a.classList.remove('active'));
             const sec = document.getElementById('section-' + id);
             if (sec) sec.classList.add('active');
-            if (ev && ev.target) ev.target.classList.add('active');
+            if (link) link.classList.add('active');
         }
 
         function switchTab(tab, button) {
