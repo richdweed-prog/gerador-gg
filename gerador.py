@@ -1721,7 +1721,7 @@ HTML_TEMPLATE = """
                     <button class="btn btn-primary" style="margin-top:0.5rem;width:100%;" onclick="verificarBin()">VERIFICAR</button>
                     <div class="bin-result" id="binResult">AGUARDANDO...</div>
                     <div class="bin-copy-actions">
-                        <button class="btn btn-cyber btn-sm" id="copyVerifiedBin" onclick="copiarBinVerificada()" disabled>COPIAR BIN VERIFICADA</button>
+                        <button class="btn btn-cyber btn-sm" id="copyVerifiedBin" onclick="copiarBinVerificada()" disabled>COPIAR DETALHES DA BIN</button>
                     </div>
                 </div>
                 <div class="bin-tab-content" id="tab-search">
@@ -1920,7 +1920,14 @@ HTML_TEMPLATE = """
                 const data = await resp.json();
                 if (data.success) {
                     const d = data.data;
-                    binVerificadaAtual = String(bin).replace(/\D/g, '').slice(0, 6);
+                    binVerificadaAtual = [
+                        `BIN: ${String(bin).replace(/\D/g, '').slice(0, 6) || '-'}`,
+                        `BANDEIRA: ${d.brand || '-'}`,
+                        `BANCO: ${d.bank || '-'}`,
+                        `PAÍS: ${d.country || '-'}`,
+                        `TIPO: ${d.type || '-'}`,
+                        `NÍVEL: ${d.level || '-'}`
+                    ].join('\\n');
                     document.getElementById('copyVerifiedBin').disabled = !binVerificadaAtual;
                     res.innerHTML = `
                         <div class="label">BIN</div><div class="value">${bin}</div>
